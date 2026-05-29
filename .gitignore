@@ -1,0 +1,6 @@
+# 106 MB — exceeds GitHub's 100 MB per-file limit
+JET_UAV_GLB.glb
+
+# Python cache
+__pycache__/
+*.pyc

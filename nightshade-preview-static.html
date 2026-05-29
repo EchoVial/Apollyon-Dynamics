@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nightshade ADX-1 — Preview (Static)</title>
+  <link rel="stylesheet" href="/fonts/jetbrains-mono-local.css" />
+  <style>
+    :root {
+      --bg:       #05070A;
+      --surface:  #111417;
+      --text-1:   #F0EDE8;
+      --text-2:   #6B6B6B;
+      --white:    #CCCAC2;
+      --on-light: #05070A;
+      --accent:   #CC1F1F;
+      --border:   rgba(240,237,232,0.07);
+      --border-hi:rgba(240,237,232,0.13);
+      --sans: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      --mono: 'JetBrains Mono','Courier New',monospace;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text-1);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    img{display:block}
+    a{color:inherit;text-decoration:none}
+
+    /* NAV */
+    .nav{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 56px;border-bottom:1px solid var(--border);background:rgba(5,7,10,0.88)}
+    .nav-l{display:flex;align-items:center;gap:18px}
+    .nav-logo img{height:17px;filter:brightness(0) invert(1)}
+    .nav-rule{width:1px;height:13px;background:var(--border-hi)}
+    .nav-crumb{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2)}
+    .nav-crumb strong{color:var(--text-1);font-weight:400}
+    .nav-r{display:flex;align-items:center;gap:32px}
+    .nav-links{display:flex;gap:24px;list-style:none}
+    .nav-links a{font-family:var(--mono);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--text-2)}
+    .nav-btn{font-family:var(--mono);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--text-1);border:1px solid var(--border-hi);padding:6px 14px}
+
+    /* HERO */
+    .hero{position:relative;height:100vh;min-height:640px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+    .hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .hero-veil{position:absolute;inset:0;background:linear-gradient(to top,#05070A 0%,rgba(5,7,10,.65) 32%,rgba(5,7,10,0) 62%),linear-gradient(to right,rgba(5,7,10,.55) 0%,transparent 55%)}
+    .hero-body{position:relative;padding:0 80px 88px;max-width:1400px}
+    .hero-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--text-2);display:flex;align-items:center;gap:14px;margin-bottom:22px}
+    .hero-eyebrow::before{content:'';display:block;width:20px;height:1px;background:var(--text-2)}
+    .hero-h1{font-family:var(--sans);font-size:clamp(60px,8.5vw,108px);font-weight:700;letter-spacing:-.05em;line-height:.9;color:var(--text-1)}
+    .hero-h1 em{display:block;color:rgba(240,237,232,.38);font-style:normal}
+    .hero-strip{display:flex;margin-top:56px;border-top:1px solid var(--border)}
+    .hero-stat{padding:20px 36px 20px 0;margin-right:36px;border-right:1px solid var(--border)}
+    .hero-stat:last-child{border-right:none;margin-right:0;padding-right:0}
+    .hero-stat-n{font-family:var(--sans);font-size:26px;font-weight:500;letter-spacing:-.025em;color:var(--text-1);line-height:1;margin-bottom:5px}
+    .hero-stat-n .u{font-size:12px;color:var(--text-2);font-weight:400;letter-spacing:0}
+    .hero-stat-lbl{font-family:var(--mono);font-size:8px;letter-spacing:.17em;text-transform:uppercase;color:var(--text-2)}
+
+    /* 3D VIEWER PLACEHOLDER */
+    .viewer-ph{height:100vh;background:var(--bg);display:flex;flex-direction:column;justify-content:space-between;padding:40px 56px;border-top:1px solid var(--border)}
+    .viewer-ph-top{display:flex;justify-content:space-between}
+    .viewer-ph-id{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-2)}
+    .viewer-ph-hint{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-2);display:flex;align-items:center;gap:8px}
+    .viewer-ph-hint::before{content:'';display:block;width:18px;height:18px;border:1px solid rgba(107,107,107,.5);border-radius:50%}
+    .viewer-ph-center{flex:1;display:flex;align-items:center;justify-content:center}
+    .viewer-ph-img{max-height:55vh;width:auto;max-width:80%;object-fit:contain;filter:brightness(1.1)}
+    .viewer-ph-bottom{display:flex;justify-content:flex-end}
+    .viewer-ph-specs{display:flex;flex-direction:column;gap:20px;align-items:flex-end}
+    .viewer-ph-spec-n{font-family:var(--sans);font-size:20px;font-weight:500;letter-spacing:-.02em;color:var(--white);line-height:1}
+    .viewer-ph-spec-lbl{font-family:var(--mono);font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2);margin-top:4px}
+
+    /* ANNOTATED */
+    .ann{padding:112px 0;background:var(--bg);overflow:hidden}
+    .ann-head{padding:0 80px;max-width:1400px;margin:0 auto 56px}
+    .ann-tag{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin-bottom:14px}
+    .ann-h2{font-family:var(--sans);font-size:36px;font-weight:600;letter-spacing:-.03em;color:var(--text-1)}
+    .ann-wrap{position:relative;width:100%}
+    .ann-img{width:100%;height:500px;object-fit:cover;object-position:center 40%;display:block}
+    .ann-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+    .a-dot{fill:#CC1F1F}
+    .a-line{stroke:#CC1F1F;stroke-width:.8;fill:none}
+    .a-tick{stroke:#CC1F1F;stroke-width:.8;fill:none;opacity:.65}
+    .a-name{font-family:'JetBrains Mono',monospace;font-size:11px;fill:#CCCAC2;letter-spacing:.08em;text-transform:uppercase}
+    .a-sub{font-family:'JetBrains Mono',monospace;font-size:9px;fill:#6B6B6B;letter-spacing:.06em}
+
+    /* SPECS */
+    .specs{padding:112px 0;background:var(--bg)}
+    .specs-head{max-width:1400px;margin:0 auto 56px;padding:0 80px}
+    .specs-tag{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin-bottom:14px}
+    .specs-h2{font-family:var(--sans);font-size:36px;font-weight:600;letter-spacing:-.03em;color:var(--text-1)}
+    .specs-grid{max-width:1400px;margin:0 auto;padding:0 80px;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)}
+    .spec-c{background:var(--surface);padding:36px 28px}
+    .spec-c-lbl{font-family:var(--mono);font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-2);margin-bottom:18px}
+    .spec-c-val{font-family:var(--sans);font-size:38px;font-weight:600;letter-spacing:-.03em;color:var(--text-1);line-height:1;margin-bottom:3px}
+    .spec-c-val.sm{font-size:24px;letter-spacing:-.02em}
+    .spec-c-unit{font-family:var(--mono);font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-2)}
+
+    /* VIDEO PLACEHOLDER */
+    .fvid-ph{position:relative;height:75vh;min-height:440px;overflow:hidden;background:var(--bg)}
+    .fvid-ph img{width:100%;height:100%;object-fit:cover;opacity:.6}
+    .fvid-ph-veil{position:absolute;inset:0;background:linear-gradient(to bottom,#05070A 0%,transparent 18%,transparent 82%,#05070A 100%)}
+
+    /* CTA */
+    .cta-wrap{max-width:1400px;margin:0 auto;padding:140px 80px;display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid var(--border)}
+    .cta-tag{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin-bottom:20px}
+    .cta-h{font-family:var(--sans);font-size:clamp(36px,4.5vw,64px);font-weight:600;letter-spacing:-.04em;color:var(--text-1);line-height:1}
+    .cta-btn{font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--on-light);background:var(--white);padding:14px 28px;flex-shrink:0;margin-left:60px;display:inline-block}
+
+    /* FOOTER */
+    .foot{max-width:1400px;margin:0 auto;padding:40px 80px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    .foot-copy{font-family:var(--mono);font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-2)}
+
+    .proto{position:fixed;bottom:20px;right:20px;font-family:var(--mono);font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-2);border:1px solid var(--border);background:var(--surface);padding:5px 10px;z-index:500}
+  </style>
+</head>
+<body>
+
+<div class="proto">Prototype — V3 (Design Preview)</div>
+
+<!-- NAV -->
+<header class="nav">
+  <div class="nav-l">
+    <a class="nav-logo"><img src="/logo/apollyon-logo-white-v2.svg" alt="Apollyon Dynamics"/></a>
+    <div class="nav-rule"></div>
+    <span class="nav-crumb">Products&nbsp;/&nbsp;<strong>Nightshade ADX-1</strong></span>
+  </div>
+  <nav class="nav-r">
+    <ul class="nav-links">
+      <li><a>Products</a></li>
+      <li><a>Technology</a></li>
+      <li><a>Newsroom</a></li>
+      <li><a>Careers</a></li>
+    </ul>
+    <a class="nav-btn">Schedule a Demo</a>
+  </nav>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <img class="hero-bg" src="/assets/hero/jet_sky_background_desktop.avif" alt="" />
+  <div class="hero-veil"></div>
+  <div class="hero-body">
+    <p class="hero-eyebrow">Autonomous Strike — ADX Series</p>
+    <h1 class="hero-h1">NIGHTSHADE<em>ADX-1</em></h1>
+    <div class="hero-strip">
+      <div class="hero-stat">
+        <div class="hero-stat-n">600<span class="u"> km/h</span></div>
+        <div class="hero-stat-lbl">Terminal Velocity</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-n">100<span class="u"> km</span></div>
+        <div class="hero-stat-lbl">Operational Range</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-n">3<span class="u"> kg</span></div>
+        <div class="hero-stat-lbl">Payload Capacity</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-n">GPS-<span class="u">Denied</span></div>
+        <div class="hero-stat-lbl">Navigation Mode</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-n">SAE<span class="u"> L3</span></div>
+        <div class="hero-stat-lbl">Autonomy Level</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3D VIEWER PLACEHOLDER -->
+<section class="viewer-ph">
+  <div class="viewer-ph-top">
+    <span class="viewer-ph-id">Nightshade ADX-1 — Configuration 1A</span>
+    <span class="viewer-ph-hint">Drag to explore</span>
+  </div>
+  <div class="viewer-ph-center">
+    <img class="viewer-ph-img" src="/unused/avif/front high fov.avif" alt="Nightshade ADX-1 3D view" />
+  </div>
+  <div class="viewer-ph-bottom">
+    <div class="viewer-ph-specs">
+      <div>
+        <div class="viewer-ph-spec-n">2.4 m</div>
+        <div class="viewer-ph-spec-lbl">Wingspan</div>
+      </div>
+      <div>
+        <div class="viewer-ph-spec-n">1.8 m</div>
+        <div class="viewer-ph-spec-lbl">Body Length</div>
+      </div>
+      <div>
+        <div class="viewer-ph-spec-n">8.5 kg</div>
+        <div class="viewer-ph-spec-lbl">MTOW</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ANNOTATED RENDER -->
+<section class="ann">
+  <div class="ann-head">
+    <p class="ann-tag">System Architecture</p>
+    <h2 class="ann-h2">Precision Engineered</h2>
+  </div>
+  <div class="ann-wrap">
+    <img class="ann-img" src="/unused/avif/aestheticshot_moreground.avif" alt="Nightshade ADX-1 annotated" />
+    <svg class="ann-svg" viewBox="0 0 1440 500" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <circle class="a-dot" cx="148" cy="248" r="4"/>
+      <line  class="a-line" x1="148" y1="248" x2="90"  y2="160"/>
+      <line  class="a-tick" x1="40"  y1="160" x2="90"  y2="160"/>
+      <text class="a-name" x="36" y="152" text-anchor="end">EO/IR Seeker</text>
+      <text class="a-sub"  x="36" y="165" text-anchor="end">Electro-optical / infrared</text>
+
+      <circle class="a-dot" cx="370" cy="258" r="4"/>
+      <line  class="a-line" x1="370" y1="258" x2="370" y2="380"/>
+      <line  class="a-tick" x1="320" y1="380" x2="420" y2="380"/>
+      <text class="a-name" x="370" y="408" text-anchor="middle">Warhead Bay</text>
+      <text class="a-sub"  x="370" y="422" text-anchor="middle">3 kg multi-effect payload</text>
+
+      <circle class="a-dot" cx="680" cy="240" r="4"/>
+      <line  class="a-line" x1="680" y1="240" x2="680" y2="130"/>
+      <line  class="a-tick" x1="630" y1="130" x2="730" y2="130"/>
+      <text class="a-name" x="680" y="116" text-anchor="middle">INS Navigation</text>
+      <text class="a-sub"  x="680" y="130" text-anchor="middle">GPS-denied guidance</text>
+
+      <circle class="a-dot" cx="860" cy="220" r="4"/>
+      <line  class="a-line" x1="860" y1="220" x2="980" y2="128"/>
+      <line  class="a-tick" x1="980" y1="128" x2="1060" y2="128"/>
+      <text class="a-name" x="1066" y="120">Folding Delta Wings</text>
+      <text class="a-sub"  x="1066" y="134">Canister-launch compatible</text>
+
+      <circle class="a-dot" cx="1220" cy="250" r="4"/>
+      <line  class="a-line" x1="1220" y1="250" x2="1330" y2="168"/>
+      <line  class="a-tick" x1="1330" y1="168" x2="1400" y2="168"/>
+      <text class="a-name" x="1406" y="161">Turbojet</text>
+      <text class="a-sub"  x="1406" y="175">High-subsonic propulsion</text>
+
+      <circle class="a-dot" cx="1100" cy="285" r="4"/>
+      <line  class="a-line" x1="1100" y1="285" x2="1100" y2="390"/>
+      <line  class="a-tick" x1="1050" y1="390" x2="1150" y2="390"/>
+      <text class="a-name" x="1100" y="414" text-anchor="middle">Elevon Surfaces</text>
+      <text class="a-sub"  x="1100" y="428" text-anchor="middle">Full 3-axis authority</text>
+    </svg>
+  </div>
+</section>
+
+<!-- SPECIFICATIONS -->
+<section class="specs">
+  <div class="specs-head">
+    <p class="specs-tag">Technical Specifications</p>
+    <h2 class="specs-h2">Performance Parameters</h2>
+  </div>
+  <div class="specs-grid">
+    <div class="spec-c"><div class="spec-c-lbl">Terminal Velocity</div><div class="spec-c-val">600</div><div class="spec-c-unit">km / h</div></div>
+    <div class="spec-c"><div class="spec-c-lbl">Operational Range</div><div class="spec-c-val">100</div><div class="spec-c-unit">km</div></div>
+    <div class="spec-c"><div class="spec-c-lbl">Payload Capacity</div><div class="spec-c-val">3</div><div class="spec-c-unit">kg</div></div>
+    <div class="spec-c"><div class="spec-c-lbl">Precision CEP</div><div class="spec-c-val">&lt;&nbsp;1</div><div class="spec-c-unit">metre</div></div>
+    <div class="spec-c"><div class="spec-c-lbl">Wingspan</div><div class="spec-c-val">2.4</div><div class="spec-c-unit">metres</div></div>
+    <div class="spec-c"><div class="spec-c-lbl">MTOW</div><div class="spec-c-val">8.5</div><div class="spec-c-unit">kg</div></div>
+    <div class="spec-c"><div class="spec-c-lbl">Navigation</div><div class="spec-c-val sm">INS + EO/IR</div><div class="spec-c-unit">GPS-denied capable</div></div>
+    <div class="spec-c"><div class="spec-c-lbl">Autonomy</div><div class="spec-c-val sm">SAE L3</div><div class="spec-c-unit">Full autonomous strike</div></div>
+  </div>
+</section>
+
+<!-- VIDEO PLACEHOLDER -->
+<section class="fvid-ph">
+  <img src="/assets/hero/jet_sky_background_desktop.avif" alt="" />
+  <div class="fvid-ph-veil"></div>
+</section>
+
+<!-- CTA -->
+<section>
+  <div class="cta-wrap">
+    <div>
+      <p class="cta-tag">Classified Briefing Available</p>
+      <h2 class="cta-h">Request Access<br>to Nightshade</h2>
+    </div>
+    <a class="cta-btn">Schedule a Briefing →</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="foot">
+    <span class="foot-copy">© 2025 Apollyon Dynamics Pvt. Ltd. — All rights reserved</span>
+    <span class="foot-copy">Controlled Technology — Not for Public Distribution</span>
+  </div>
+</footer>
+</body>
+</html>
