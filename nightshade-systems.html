@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nightshade Mk III — Systems Teardown</title>
+  <link rel="icon" type="image/svg+xml" href="/logo/apollyon-logo-black.svg" />
+  <link rel="stylesheet" href="/fonts/jetbrains-mono-local.css" />
+  <!-- Davetica-Regular.otf is a watermarked demo — using Helvetica Neue Bold instead -->
+
+  <!-- SVG grain filter (GPU-accelerated; replaces JS canvas noise) -->
+  <svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+    <defs>
+      <filter id="gf" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.72 0.72" numOctaves="4" seed="7" stitchTiles="stitch"/>
+        <feColorMatrix type="saturate" values="0"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <style>
+    :root {
+      --bg:       #040404;
+      --text-1:   #F0EDE8;
+      --text-2:   #6B6B6B;
+      --white:    #CCCAC2;
+      --on-light: #040404;
+      --accent:   #CC1F1F;
+      --border:   rgba(240,237,232,0.07);
+      --bhi:      rgba(240,237,232,0.14);
+      --bmax:     rgba(240,237,232,0.38);
+      --sans:  'Helvetica Neue', Helvetica, Arial, sans-serif;
+      --serif: Georgia, 'Times New Roman', serif;
+      --mono:  'JetBrains Mono', 'Courier New', monospace;
+      --ease:  cubic-bezier(0.16,1,0.3,1);
+      --nav-h: 48px;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{background:var(--bg);color:var(--text-1);font-family:var(--sans);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+
+    /* ── fixed 3D canvas ──────────────────────────────────────────── */
+    #stage{position:fixed;inset:0;width:100vw;height:100vh;z-index:1}
+
+    /* ── radar pattern ────────────────────────────────────────────── */
+    #pattern{
+      position:fixed;left:50%;top:50%;
+      width:150vmax;height:150vmax;
+      transform:translate(-50%,-50%);
+      z-index:0;pointer-events:none;opacity:0.48;
+      background:
+        repeating-conic-gradient(from 0deg at 50% 50%, transparent 0 7.4deg, rgba(240,237,232,0.05) 7.4deg 7.6deg),
+        repeating-radial-gradient(circle at 50%, transparent 0 8px, rgba(240,237,232,0.055) 8px 9px);
+      -webkit-mask:radial-gradient(circle at 50%, #000 0 8%, rgba(0,0,0,0.45) 26%, transparent 60%);
+              mask:radial-gradient(circle at 50%, #000 0 8%, rgba(0,0,0,0.45) 26%, transparent 60%);
+      animation:patSpin 300s linear infinite;
+    }
+    @keyframes patSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+
+    /* ── starfield ────────────────────────────────────────────────── */
+    #stars{position:fixed;inset:0;z-index:0;pointer-events:none}
+    #stars i{position:absolute;border-radius:50%;background:var(--text-1);
+      animation:twinkle var(--tw,5s) ease-in-out infinite alternate}
+    @keyframes twinkle{from{opacity:0.07}to{opacity:0.50}}
+
+    /* ── grain overlay (SVG filter on thin div) ──────────────────── */
+    #grain{
+      position:fixed;inset:-20%;z-index:8;pointer-events:none;
+      width:140%;height:140%;
+      background:#888;
+      filter:url(#gf);
+      opacity:0.055;
+      mix-blend-mode:overlay;
+    }
+
+    /* ── scan lines ───────────────────────────────────────────────── */
+    #scanlines{
+      position:fixed;inset:0;z-index:9;pointer-events:none;
+      background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,0.07) 3px 4px);
+    }
+
+    /* ── 3D-projected target layer ────────────────────────────────── */
+    #targets{position:fixed;inset:0;z-index:6;pointer-events:none}
+
+    /* target element — corner-bracket crosshair */
+    .tgt{position:absolute;transform:translate(-50%,-50%);pointer-events:none;will-change:left,top,opacity}
+    .tgt .cb{position:absolute;width:10px;height:10px}
+    .tgt .cb.tl{top:-1px;left:-1px;border-top:1px solid rgba(255,36,36,.9);border-left:1px solid rgba(255,36,36,.9)}
+    .tgt .cb.tr{top:-1px;right:-1px;border-top:1px solid rgba(255,36,36,.9);border-right:1px solid rgba(255,36,36,.9)}
+    .tgt .cb.bl{bottom:-1px;left:-1px;border-bottom:1px solid rgba(255,36,36,.9);border-left:1px solid rgba(255,36,36,.9)}
+    .tgt .cb.br{bottom:-1px;right:-1px;border-bottom:1px solid rgba(255,36,36,.9);border-right:1px solid rgba(255,36,36,.9)}
+    /* edge ticks */
+    .tgt .et{position:absolute;background:rgba(255,36,36,.5)}
+    .tgt .et.tt{top:0;left:50%;transform:translateX(-50%);width:1px;height:5px}
+    .tgt .et.bt{bottom:0;left:50%;transform:translateX(-50%);width:1px;height:5px}
+    .tgt .et.lt{left:0;top:50%;transform:translateY(-50%);height:1px;width:5px}
+    .tgt .et.rt{right:0;top:50%;transform:translateY(-50%);height:1px;width:5px}
+    /* crosshair centre */
+    .tgt .cx{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:12px;height:12px}
+    .tgt .cx::before{content:'';position:absolute;left:50%;top:0;width:.75px;height:calc(50% - 2px);background:rgba(255,36,36,.7);transform:translateX(-50%)}
+    .tgt .cx::after {content:'';position:absolute;top:50%;left:0;width:calc(50% - 2px);height:.75px;background:rgba(255,36,36,.7);transform:translateY(-50%)}
+    .tgt .cx2{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:12px;height:12px}
+    .tgt .cx2::before{content:'';position:absolute;left:50%;bottom:0;width:.75px;height:calc(50% - 2px);background:rgba(255,36,36,.7);transform:translateX(-50%)}
+    .tgt .cx2::after {content:'';position:absolute;top:50%;right:0;width:calc(50% - 2px);height:.75px;background:rgba(255,36,36,.7);transform:translateY(-50%)}
+    /* centre dot */
+    .tgt .cd{position:absolute;top:50%;left:50%;width:2.5px;height:2.5px;background:rgba(255,36,36,.98);transform:translate(-50%,-50%);box-shadow:0 0 6px rgba(255,36,36,.7)}
+    /* invert zone */
+    .tgt .inv{position:absolute;inset:20%;backdrop-filter:invert(.88) contrast(1.08);-webkit-backdrop-filter:invert(.88) contrast(1.08)}
+    /* label below */
+    .tgt .tl{position:absolute;top:calc(100% + 5px);left:50%;transform:translateX(-50%);
+      font-family:var(--mono);font-size:6px;letter-spacing:.22em;text-transform:uppercase;
+      color:rgba(255,100,100,.72);white-space:nowrap}
+    /* id tag */
+    .tgt .ti{position:absolute;bottom:calc(100% + 4px);right:0;
+      font-family:var(--mono);font-size:5.5px;letter-spacing:.18em;
+      color:rgba(255,100,100,.45);white-space:nowrap}
+
+    /* ── loader ───────────────────────────────────────────────────── */
+    #loader{position:fixed;inset:0;z-index:90;background:var(--bg);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+      transition:opacity .9s var(--ease)}
+    #loader.gone{opacity:0;pointer-events:none}
+    #loader .ln{font-family:var(--mono);font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--text-2)}
+    #loader .lb{width:160px;height:1px;background:rgba(240,237,232,.09);overflow:hidden}
+    #loader .lb i{display:block;height:100%;width:40%;background:var(--text-1);animation:ls 1.1s var(--ease) infinite}
+    @keyframes ls{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+
+    /* ── HUD chrome ───────────────────────────────────────────────── */
+    .hc{position:fixed;inset:0;z-index:30;pointer-events:none}
+    .co{position:absolute;width:22px;height:22px;border:1px solid rgba(240,237,232,.17)}
+    .co.tl{top:62px;left:22px;border-right:0;border-bottom:0}
+    .co.tr{top:62px;right:22px;border-left:0;border-bottom:0}
+    .co.bl{bottom:22px;left:22px;border-right:0;border-top:0}
+    .co.br{bottom:22px;right:22px;border-left:0;border-top:0}
+    /* reticle: 4-arm with gap */
+    .ret{position:fixed;top:50%;left:50%;width:26px;height:26px;
+      transform:translate(-50%,-50%);z-index:30;pointer-events:none}
+    .ret::before,.ret::after,.ret .r2::before,.ret .r2::after{content:'';position:absolute;background:rgba(240,237,232,.26)}
+    .ret::before{left:50%;top:0;width:.75px;height:calc(50% - 4px);transform:translateX(-50%)}
+    .ret::after {top:50%;left:0;width:calc(50% - 4px);height:.75px;transform:translateY(-50%)}
+    .ret .r2::before{left:50%;bottom:0;width:.75px;height:calc(50% - 4px);transform:translateX(-50%)}
+    .ret .r2::after {top:50%;right:0;width:calc(50% - 4px);height:.75px;transform:translateY(-50%)}
+    /* telemetry */
+    .tel{position:fixed;z-index:30;pointer-events:none;
+      font-family:var(--mono);font-size:7px;letter-spacing:.2em;text-transform:uppercase;
+      color:var(--text-2);display:flex;gap:18px}
+    .tel.t{top:66px;left:54px}
+    .tel.b{bottom:26px;left:54px}
+    .tel b{color:var(--white);font-weight:400}
+    .tel .lv{color:var(--accent)}
+    /* right vertical strip */
+    .vst{position:fixed;right:48px;top:50%;transform:translateY(-50%) rotate(90deg);
+      z-index:30;pointer-events:none;
+      font-family:var(--mono);font-size:5.5px;letter-spacing:.3em;text-transform:uppercase;
+      color:rgba(204,202,194,.18);white-space:nowrap}
+    /* classification block */
+    .cls{position:fixed;right:54px;bottom:26px;z-index:30;pointer-events:none;text-align:right}
+    .cls span{font-family:var(--mono);font-size:6px;letter-spacing:.22em;text-transform:uppercase;
+      color:rgba(204,202,194,.28);line-height:2;display:block}
+    .cls span.hi{color:rgba(204,202,194,.5)}
+
+    /* ── nav ──────────────────────────────────────────────────────── */
+    .nav{position:fixed;inset:0 0 auto;z-index:40;height:var(--nav-h);
+      display:flex;align-items:center;justify-content:space-between;padding:0 44px;
+      background:rgba(4,4,4,.82);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+      border-bottom:1px solid var(--border)}
+    .nl{display:flex;align-items:center;gap:14px}
+    .nl img{height:14px;filter:brightness(0) invert(1)}
+    .nr{display:flex;align-items:center;gap:16px}
+    .nrule{width:1px;height:11px;background:var(--bhi)}
+    .ncrumb{font-family:var(--mono);font-size:7.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2)}
+    .ncrumb strong{color:var(--text-1);font-weight:400}
+    .nlinks{display:flex;gap:18px;list-style:none}
+    .nlinks a{font-family:var(--mono);font-size:7.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--text-2);transition:color .2s}
+    .nlinks a:hover,.nlinks a.on{color:var(--text-1)}
+    .nbtn{font-family:var(--mono);font-size:7.5px;letter-spacing:.14em;text-transform:uppercase;
+      color:var(--text-1);border:1px solid var(--bhi);padding:5px 11px;white-space:nowrap;transition:border-color .2s}
+    .nbtn:hover{border-color:var(--bmax)}
+
+    /* ── scroll track ─────────────────────────────────────────────── */
+    .track{position:relative;z-index:10}
+    .station{min-height:100vh;display:flex;align-items:center;padding:108px 72px;position:relative}
+    .station.left  {justify-content:flex-start}
+    .station.right {justify-content:flex-end}
+    .station.center{justify-content:center;text-align:center}
+
+    .tag{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+      color:var(--text-2);display:flex;align-items:center;gap:10px;margin-bottom:16px}
+    .tag::before{content:'';width:20px;height:1px;background:var(--text-2)}
+    .station.center .tag{justify-content:center}
+
+    /* hero — Davetica brand font, exact weight from reference */
+    .h-hero{font-family:var(--sans);font-weight:700;
+      font-size:clamp(56px,10vw,156px);letter-spacing:-.02em;line-height:.86;color:var(--text-1)}
+    .h-sub{font-family:var(--mono);font-size:clamp(9px,1.3vw,12px);
+      letter-spacing:.18em;text-transform:uppercase;color:var(--text-2);margin-top:16px}
+    /* sub-headings — JetBrains Mono like the CRUISE/KM/H label */
+    .h-stn{font-family:var(--mono);font-weight:400;
+      font-size:clamp(22px,3.2vw,40px);letter-spacing:.07em;text-transform:uppercase;line-height:1.12;color:var(--text-1)}
+
+    /* ── panel — boarding-pass structural style ──────────────────── */
+    .panel{
+      position:relative;max-width:500px;
+      background:#030303;border:1px solid rgba(240,237,232,.14);
+      overflow:hidden;
+      padding:0;  /* sections own padding now */
+    }
+    /* tag becomes full-width header row */
+    .panel .tag{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:11px 22px;margin-bottom:0;
+      border-bottom:1px solid rgba(240,237,232,.09);
+      font-size:7px;letter-spacing:.22em;
+    }
+    .panel .tag::before{display:none}
+    /* heading section */
+    .panel .h-stn{
+      padding:22px 22px 18px;
+      border-bottom:1px solid rgba(240,237,232,.07);
+      display:block;
+    }
+    /* content blocks get consistent padding */
+    .panel .pnote{padding:0 22px;margin-top:16px}
+    .panel .bigstat{padding:18px 22px;border-bottom:1px solid rgba(240,237,232,.07);margin-top:0}
+    .panel .stats{margin-top:0}
+    .panel .kv{margin-top:0;border-top:1px solid rgba(240,237,232,.07)}
+    .panel .fan{margin-top:0;border-top:1px solid rgba(240,237,232,.07)}
+    .panel .chiprow{padding:14px 22px;margin-top:0}
+    .panel .chiprow+.chiprow{padding-top:0}
+    .panel .hl{margin:16px 22px 18px;display:inline-flex}
+    .panel .phases{margin-top:0;padding:14px 22px 18px 42px}
+    .panel .phases::before{left:26px}
+    /* window chrome */
+    .panel::before{content:'□  □  ×';position:absolute;top:0;right:0;
+      font-family:var(--mono);font-size:6.5px;letter-spacing:.1em;color:rgba(240,237,232,.18);
+      padding:5px 9px;border-bottom:1px solid rgba(240,237,232,.05);border-left:1px solid rgba(240,237,232,.05)}
+    .panel::after{content:'';position:absolute;width:9px;height:9px;bottom:-1px;right:-1px;
+      border-bottom:1px solid rgba(240,237,232,.42);border-right:1px solid rgba(240,237,232,.42)}
+    .ptl{position:absolute;top:-1px;left:-1px;width:9px;height:9px;
+      border-top:1px solid rgba(240,237,232,.42);border-left:1px solid rgba(240,237,232,.42)}
+    .pnote{font-size:15px;line-height:1.74;color:var(--white);margin-top:14px;max-width:37ch}
+
+    /* stats */
+    .stats{display:flex;flex-wrap:wrap;gap:1px;background:rgba(240,237,232,.07);margin-top:20px}
+    .stat{background:rgba(4,4,4,.62);padding:12px 16px 10px;min-width:90px;flex:1}
+    .stat .num{font-family:var(--sans);font-weight:700;font-size:34px;letter-spacing:-.02em;line-height:1;color:var(--text-1)}
+    .stat .num .u{font-family:var(--mono);font-size:8px;color:var(--text-2);font-weight:400;letter-spacing:.08em;margin-left:3px}
+    .stat .lbl{font-family:var(--mono);font-size:6.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-2);margin-top:7px}
+
+    .bigstat{display:flex;align-items:baseline;gap:10px;margin-top:5px}
+    .bigstat .v{font-family:var(--sans);font-weight:700;
+      font-size:clamp(62px,8.5vw,110px);letter-spacing:-.02em;line-height:.88;color:var(--text-1)}
+    .bigstat .v .u{font-family:var(--mono);font-size:.22em;color:var(--text-2);font-weight:400;letter-spacing:.12em}
+
+    /* highlight */
+    .hl{display:inline-flex;align-items:center;gap:8px;margin-top:16px;padding:10px 14px;
+      border:1px solid rgba(240,237,232,.42);
+      font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--white);
+      position:relative;overflow:hidden}
+    .hl::before{content:'';position:absolute;inset:0;background:var(--white);transform:scaleX(0);transform-origin:left;transition:transform .7s var(--ease) .3s;z-index:-1}
+    .hl.lit::before{transform:scaleX(1)}
+    .hl.lit{color:var(--on-light);border-color:var(--white);transition:color .3s .5s}
+    .hl .dot{width:5px;height:5px;background:currentColor}
+
+    /* chips */
+    .chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:16px}
+    .chip{font-family:var(--mono);font-size:7.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-1);
+      border:1px solid var(--bhi);padding:7px 11px;background:rgba(4,4,4,.45);white-space:nowrap;line-height:1.3;
+      opacity:0;transform:translateY(10px) scale(.95);transition:opacity .5s var(--ease),transform .5s var(--ease)}
+    .reveal.in .chip{opacity:1;transform:none}
+    .chip.key{border-color:rgba(240,237,232,.48);color:var(--white)}
+
+    /* fan */
+    .fan{display:grid;gap:1px;background:rgba(240,237,232,.07);margin-top:18px}
+    .fan-item{background:rgba(4,4,4,.62);padding:11px 14px;display:flex;align-items:baseline;gap:11px;
+      opacity:0;transform:translateX(-16px);transition:opacity .55s var(--ease),transform .55s var(--ease)}
+    .reveal.in .fan-item{opacity:1;transform:none}
+    .fan-item .k{font-family:var(--mono);font-size:7.5px;letter-spacing:.16em;color:var(--white);min-width:22px}
+    .fan-item .t{font-size:13px;font-weight:500;color:var(--text-1);letter-spacing:-.01em}
+    .fan-item .d{font-family:var(--mono);font-size:7px;letter-spacing:.08em;color:var(--text-2);margin-left:auto;text-transform:uppercase}
+
+    /* phases */
+    .phases{margin-top:22px;position:relative;padding-left:20px}
+    .phases::before{content:'';position:absolute;left:4px;top:5px;bottom:5px;width:1px;background:rgba(240,237,232,.1)}
+    .phase{position:relative;padding:9px 0;
+      opacity:0;transform:translateX(-12px);transition:opacity .5s var(--ease),transform .5s var(--ease)}
+    .reveal.in .phase{opacity:1;transform:none}
+    .phase::before{content:'';position:absolute;left:-20px;top:14px;width:7px;height:7px;
+      background:var(--bg);border:1px solid rgba(240,237,232,.42);transform:translateX(1px)}
+    .phase.term::before{background:var(--white)}
+    .phase .pn{font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--text-2)}
+    .phase .pt{font-size:15px;font-weight:500;color:var(--text-1);margin-top:4px;letter-spacing:-.01em}
+    .phase .pt .sp{font-family:var(--mono);font-size:10px;color:var(--white);letter-spacing:.04em;margin-left:8px}
+
+    /* roles */
+    .roles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(240,237,232,.07);margin-top:22px}
+    .role{background:rgba(4,4,4,.62);padding:14px 12px;min-height:76px;
+      opacity:0;transform:scale(.97);transition:opacity .5s var(--ease),transform .5s var(--ease)}
+    .reveal.in .role{opacity:1;transform:none}
+    .role .rn{font-family:var(--mono);font-size:6.5px;letter-spacing:.16em;color:var(--text-2)}
+    .role .rt{font-size:11.5px;font-weight:500;color:var(--text-1);margin-top:7px;letter-spacing:-.01em;line-height:1.2}
+
+    /* kv */
+    .kv{margin-top:16px;display:grid;gap:1px;background:rgba(240,237,232,.06)}
+    .kv-row{background:rgba(4,4,4,.58);display:flex;justify-content:space-between;gap:16px;padding:13px 16px}
+    .kv-row .k{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
+    .kv-row .v{font-family:var(--mono);font-size:12.5px;letter-spacing:.04em;color:var(--text-1);text-align:right}
+
+    /* reveal */
+    .reveal{opacity:0;transform:translateY(16px);filter:blur(5px);
+      transition:opacity .9s var(--ease),transform .9s var(--ease),filter .9s var(--ease)}
+    .reveal.in{opacity:1;transform:none;filter:none}
+    .reveal.d1{transition-delay:.1s}
+
+    /* scroll hint */
+    #hint{position:fixed;left:50%;bottom:34px;transform:translateX(-50%);z-index:35;pointer-events:none;
+      display:flex;flex-direction:column;align-items:center;gap:10px;transition:opacity .6s var(--ease);
+      font-family:var(--mono);font-size:6.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--text-2)}
+    #hint.gone{opacity:0}
+    #hint .bar{width:1px;height:26px;background:linear-gradient(to bottom,var(--text-2),transparent);animation:drop 1.8s var(--ease) infinite}
+    @keyframes drop{0%{transform:scaleY(0);transform-origin:top}45%{transform:scaleY(1);transform-origin:top}55%{transform:scaleY(1);transform-origin:bottom}100%{transform:scaleY(0);transform-origin:bottom}}
+
+    /* progress */
+    #progBar{position:fixed;left:0;bottom:0;width:100vw;height:2px;background:rgba(240,237,232,.05);z-index:40}
+    #progFill{width:100%;height:100%;background:var(--text-1);transform:scaleX(0);transform-origin:left}
+
+    /* station dots */
+    .idx{position:fixed;right:24px;top:50%;transform:translateY(-50%);z-index:35;display:flex;flex-direction:column;gap:9px}
+    .idx button{width:6px;height:6px;border:1px solid var(--bmax);background:transparent;padding:0;cursor:pointer;transition:background .3s,border-color .3s}
+    .idx button.on{background:var(--text-1);border-color:var(--text-1)}
+
+    /* ═══════════════════════════════════════════════════════════════
+       VISUAL GALLERY — below the scroll track
+       ═══════════════════════════════════════════════════════════════ */
+    .gallery-sec{
+      position:relative;z-index:5;background:var(--bg);
+      padding:0 0 120px;
+      border-top:1px solid var(--border);
+    }
+    .gs-header{
+      max-width:1400px;margin:0 auto;padding:80px 72px 56px;
+      display:flex;justify-content:space-between;align-items:flex-end;
+      border-bottom:1px solid var(--border);margin-bottom:0;
+    }
+    .gs-h{font-family:var(--mono);font-size:clamp(18px,2.4vw,28px);font-weight:400;letter-spacing:.07em;text-transform:uppercase;color:var(--text-1)}
+    .gs-meta{text-align:right}
+    .gs-meta span{display:block;font-family:var(--mono);font-size:7px;letter-spacing:.22em;text-transform:uppercase;color:var(--text-2);line-height:2}
+    .gs-meta span.hi{color:var(--white)}
+
+    /* featured video strip */
+    .gs-video-strip{
+      position:relative;width:100%;height:56vh;min-height:320px;overflow:hidden;
+    }
+    .gs-video-strip video{width:100%;height:100%;object-fit:cover;display:block;filter:brightness(.88) saturate(.7)}
+    .gs-video-overlay{
+      position:absolute;inset:0;
+      background:linear-gradient(to bottom,transparent 50%,rgba(4,4,4,.72) 100%);
+      display:flex;align-items:flex-end;
+      padding:28px 72px;
+      pointer-events:none;
+    }
+    .gs-video-label{
+      display:flex;gap:28px;align-items:baseline;
+    }
+    .gs-video-id{font-family:var(--mono);font-size:7px;letter-spacing:.22em;text-transform:uppercase;color:rgba(204,202,194,.6)}
+    .gs-video-title{font-family:var(--mono);font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--white)}
+    /* play/pause indicator */
+    .gs-video-strip::after{
+      content:'▶ AUTOPLAY';
+      position:absolute;top:16px;right:72px;
+      font-family:var(--mono);font-size:6.5px;letter-spacing:.22em;text-transform:uppercase;
+      color:rgba(204,202,194,.4);
+    }
+
+    /* image grid */
+    .gs-grid{
+      max-width:1400px;margin:0 auto;padding:0 72px;
+      display:grid;
+      grid-template-columns:repeat(12,1fr);
+      gap:2px;
+      margin-top:2px;
+    }
+    .gs-item{position:relative;overflow:hidden;background:#0a0a0a}
+    .gs-item--a{grid-column:span 5;grid-row:span 2}
+    .gs-item--b{grid-column:span 4}
+    .gs-item--c{grid-column:span 3}
+    .gs-item--d{grid-column:span 4}
+    .gs-item--e{grid-column:span 5}
+
+    .gs-img{
+      width:100%;height:100%;min-height:220px;
+      object-fit:cover;display:block;
+      filter:brightness(.82) saturate(.55) contrast(1.08);
+      transition:filter .5s var(--ease);
+    }
+    .gs-item:hover .gs-img{filter:brightness(.92) saturate(.75) contrast(1.05)}
+
+    .gs-cap{
+      position:absolute;bottom:0;left:0;right:0;
+      padding:9px 14px;
+      background:linear-gradient(to top,rgba(4,4,4,.82),transparent);
+      display:flex;justify-content:space-between;align-items:flex-end;
+    }
+    .gs-cap-id{font-family:var(--mono);font-size:6px;letter-spacing:.22em;text-transform:uppercase;color:rgba(204,202,194,.55)}
+    .gs-cap-lbl{font-family:var(--mono);font-size:6.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--white);max-width:24ch}
+
+    /* ═══════════════════════════════════════════════════════════════
+       REDACTED DOSSIER
+       ═══════════════════════════════════════════════════════════════ */
+    .doss-sec{
+      position:relative;z-index:5;background:var(--bg);
+      padding:0 72px 140px;
+    }
+    .doss-inner{
+      max-width:1060px;margin:0 auto;
+      position:relative;
+    }
+    /* document card */
+    .doss-doc{
+      position:relative;
+      background:rgba(230,226,218,.04);
+      border:1px solid rgba(240,237,232,.12);
+      padding:44px 52px 48px;
+    }
+    /* diagonal watermark */
+    .doss-doc::before{
+      content:'CLASSIFIED';
+      position:absolute;top:50%;left:50%;
+      transform:translate(-50%,-50%) rotate(-28deg);
+      font-family:var(--sans);font-size:clamp(60px,8vw,108px);font-weight:700;
+      letter-spacing:.18em;text-transform:uppercase;
+      color:rgba(240,237,232,.025);
+      pointer-events:none;white-space:nowrap;
+      user-select:none;
+    }
+    /* corner bracket */
+    .doss-doc::after{content:'';position:absolute;bottom:-1px;right:-1px;width:12px;height:12px;
+      border-bottom:1px solid rgba(240,237,232,.45);border-right:1px solid rgba(240,237,232,.45)}
+    .doss-tl{position:absolute;top:-1px;left:-1px;width:12px;height:12px;
+      border-top:1px solid rgba(240,237,232,.45);border-left:1px solid rgba(240,237,232,.45)}
+
+    /* classification banner */
+    .doss-class{
+      font-family:var(--mono);font-size:7px;letter-spacing:.35em;text-transform:uppercase;
+      color:rgba(204,202,194,.5);
+      border-bottom:1px solid rgba(240,237,232,.08);
+      padding-bottom:16px;margin-bottom:22px;
+      display:flex;justify-content:space-between;
+    }
+    /* doc ID header */
+    .doss-id-row{
+      display:flex;gap:36px;margin-bottom:24px;
+      flex-wrap:wrap;
+    }
+    .doss-id-row span{
+      font-family:var(--mono);font-size:7px;letter-spacing:.18em;text-transform:uppercase;
+      color:var(--text-2);
+    }
+    .doss-id-row span b{color:var(--white);font-weight:400}
+    /* title */
+    .doss-title{
+      font-family:var(--sans);font-size:clamp(26px,3.8vw,48px);font-weight:700;
+      letter-spacing:-.02em;color:var(--text-1);margin-bottom:6px;
+    }
+    .doss-subtitle{
+      font-family:var(--mono);font-size:8px;letter-spacing:.18em;text-transform:uppercase;
+      color:var(--text-2);margin-bottom:32px;
+    }
+    /* divider */
+    .doss-rule{height:1px;background:rgba(240,237,232,.08);margin:22px 0}
+
+    /* two-column body */
+    .doss-body{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start}
+    /* spec rows */
+    .doss-specs{display:grid;gap:1px;background:rgba(240,237,232,.07)}
+    .doss-row{
+      background:rgba(4,4,4,.5);
+      display:flex;justify-content:space-between;align-items:center;
+      padding:9px 14px;gap:16px;
+    }
+    .dk{font-family:var(--mono);font-size:7px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2)}
+    .dv{font-family:var(--mono);font-size:8px;letter-spacing:.06em;color:var(--text-1);text-align:right;display:flex;align-items:center;gap:6px}
+    /* redacted bar */
+    .rx{
+      display:inline-block;background:rgba(204,202,194,.46);
+      color:transparent;user-select:none;
+      height:.75em;vertical-align:middle;border-radius:1px;
+    }
+    /* image attachment */
+    .doss-img-wrap{position:relative}
+    .doss-img{
+      width:100%;aspect-ratio:4/3;object-fit:cover;display:block;
+      filter:brightness(.75) saturate(.4) contrast(1.1);
+    }
+    .doss-img-label{
+      position:absolute;top:0;left:0;right:0;
+      padding:8px 12px;
+      background:rgba(4,4,4,.72);
+      font-family:var(--mono);font-size:6.5px;letter-spacing:.2em;text-transform:uppercase;
+      color:rgba(204,202,194,.6);
+      display:flex;justify-content:space-between;
+    }
+    .doss-img-corner{
+      position:absolute;bottom:8px;right:10px;
+      font-family:var(--mono);font-size:6px;letter-spacing:.2em;text-transform:uppercase;
+      color:rgba(204,202,194,.38);
+    }
+    /* redacted text paragraph */
+    .doss-redact-para{
+      margin-top:22px;
+      font-family:var(--mono);font-size:7.5px;letter-spacing:.04em;line-height:2;
+      color:var(--text-2);
+    }
+    .doss-redact-para .rxb{
+      display:inline-block;background:rgba(204,202,194,.35);
+      color:transparent;user-select:none;height:.7em;vertical-align:middle;border-radius:1px;
+      margin:0 2px;
+    }
+    /* footer classification */
+    .doss-foot{
+      margin-top:28px;
+      padding-top:16px;
+      border-top:1px solid rgba(240,237,232,.08);
+      display:flex;justify-content:space-between;
+      font-family:var(--mono);font-size:6.5px;letter-spacing:.22em;text-transform:uppercase;
+      color:rgba(204,202,194,.32);
+    }
+
+    /* ─ shared section spacing ─ */
+    .sec-head{max-width:1400px;margin:0 auto;padding:80px 72px 52px;border-bottom:1px solid var(--border)}
+    .sec-tag{font-family:var(--mono);font-size:7.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--text-2);margin-bottom:10px}
+    .sec-h{font-family:var(--sans);font-weight:700;font-size:clamp(24px,3vw,38px);letter-spacing:-.02em;color:var(--text-1)}
+
+    /* ═══ BATTLESPACE SECTION — Anduril bold/spaced style ════════════ */
+    .bs-station{justify-content:center;text-align:center}
+    .bs-wrap{max-width:1100px;width:100%}
+    .bs-heading{
+      margin:28px 0 32px;
+      display:flex;flex-direction:column;align-items:center;gap:4px;
+    }
+    .bs-line{
+      font-family:var(--sans);font-weight:700;
+      font-size:clamp(40px,6.5vw,84px);
+      letter-spacing:.2em;
+      text-transform:uppercase;
+      color:var(--text-1);
+      line-height:1;
+      display:block;
+    }
+    .bs-line-accent{
+      font-size:clamp(50px,8.5vw,108px);
+      letter-spacing:.22em;
+    }
+    /* roles as inline spaced text — no grid */
+    .bs-roles{
+      display:flex;flex-wrap:wrap;justify-content:center;
+      align-items:center;gap:8px 0;
+      font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;
+      color:var(--text-2);
+    }
+    .bs-roles span{padding:0 10px}
+    .bs-sep{color:rgba(240,237,232,.2);font-size:7px}
+
+    /* ═══ PARTICLE MATERIALIZATION ════════════════════════════════════ */
+    #mat-canvas{
+      position:fixed;inset:0;z-index:3;pointer-events:none;
+      width:100vw;height:100vh;
+      opacity:0;transition:opacity .8s var(--ease);
+    }
+    #mat-canvas.active{opacity:1}
+
+    /* ── model veil — hides 3D at hero, fades out on scroll ──────────────── */
+    #model-veil{
+      position:fixed;inset:0;z-index:2;
+      background:var(--bg);
+      pointer-events:none;
+      transition:opacity .7s var(--ease);
+    }
+    #model-veil.gone{opacity:0}
+
+    /* ── spec-grid — system profile cards layout ─────────────────────────── */
+    .spec-sec{position:relative;z-index:5;background:var(--bg);border-top:1px solid var(--border)}
+    .spec-inner{max-width:1400px;margin:0 auto;padding:72px 72px 88px}
+    .spec-eyebrow{font-family:var(--mono);font-size:7.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--text-2);margin-bottom:10px}
+    .spec-title{font-family:var(--sans);font-size:clamp(22px,2.8vw,38px);font-weight:700;letter-spacing:-.01em;text-transform:none;color:var(--text-1);margin-bottom:36px;border-bottom:2px solid var(--accent);padding-bottom:14px;display:inline-block}
+    .spec-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:rgba(240,237,232,.04)}
+    .spec-grid .panel{max-width:none;border:none;background:#030303}
+    @media(max-width:900px){.spec-grid{grid-template-columns:1fr}}
+
+    /* ── tac-sec — tactical profile cards ───────────────────────────────── */
+    .tac-sec{position:relative;z-index:5;background:var(--bg);padding:0 72px 88px;border-top:1px solid var(--border)}
+    .tac-sec-head{max-width:1400px;margin:0 auto;padding:72px 0 44px;border-bottom:1px solid var(--border)}
+    .tac-grid{max-width:1400px;margin:0 auto;padding:44px 0 0;display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:rgba(240,237,232,.04)}
+    .tac-grid .panel{max-width:none;border:none;background:#030303;border-top:1px solid rgba(204,36,36,.28)}
+    @media(max-width:900px){.tac-grid{grid-template-columns:1fr}}
+
+    /* Tactical profile visual motif strip */
+    .tac-vis{
+      height:52px;position:relative;overflow:hidden;
+      border-bottom:1px solid rgba(240,237,232,.06);
+      background:rgba(4,4,4,.96);
+    }
+    /* Faint red coordinate grid */
+    .tac-vis::before{
+      content:'';position:absolute;inset:0;
+      background:
+        repeating-linear-gradient(90deg,rgba(204,36,36,.07) 0 .5px,transparent .5px 22px),
+        repeating-linear-gradient(0deg,rgba(204,36,36,.07) 0 .5px,transparent .5px 22px);
+    }
+    /* Large faint profile number watermark */
+    .tac-vis::after{
+      content:attr(data-code);
+      position:absolute;right:14px;bottom:-10px;
+      font-family:var(--sans);font-weight:700;font-size:76px;letter-spacing:-.06em;
+      color:rgba(204,36,36,.06);line-height:1;user-select:none;pointer-events:none;
+    }
+    /* Red targeting cross: horizontal arm */
+    .tac-vis .tac-cross{
+      position:absolute;top:50%;left:0;right:0;height:.5px;
+      background:linear-gradient(90deg,transparent,rgba(204,36,36,.25) 20%,rgba(204,36,36,.25) 80%,transparent);
+    }
+    /* Vertical arm via ::before on .tac-cross */
+    .tac-vis .tac-cross::before{
+      content:'';position:absolute;left:22px;top:-16px;bottom:-16px;width:.5px;
+      background:linear-gradient(to bottom,transparent,rgba(204,36,36,.25) 30%,rgba(204,36,36,.25) 70%,transparent);
+    }
+    /* Centre dot */
+    .tac-vis .tac-cross::after{
+      content:'';position:absolute;left:22px;top:50%;transform:translate(-50%,-50%);
+      width:4px;height:4px;border-radius:50%;
+      background:rgba(204,36,36,.55);box-shadow:0 0 8px rgba(204,36,36,.4);
+    }
+    /* Profile label */
+    .tac-vis .tac-label{
+      position:absolute;left:44px;top:50%;transform:translateY(-50%);
+      font-family:var(--mono);font-size:6px;letter-spacing:.26em;text-transform:uppercase;
+      color:rgba(204,36,36,.45);
+    }
+
+    /* ═══ TERMINAL DIVE — 3-col: video LEFT | jet CENTER | card RIGHT ════ */
+    #station-dive{
+      display:grid !important;
+      grid-template-columns:400px 1fr 480px !important;
+      gap:0 !important;
+      align-items:center !important;
+      padding:108px 72px !important;
+    }
+    #station-dive > .dive-monitor{grid-column:1}
+    #station-dive > .panel       {grid-column:3}
+    /* Stage Manager monitor — left side, angled to face right (into the page center) */
+    .dive-monitor{
+      width:100%;max-width:400px;
+      transform:perspective(700px) rotateY(22deg) rotateX(5deg);
+      transform-origin:left center;
+      will-change:transform;
+      filter:drop-shadow(-20px 14px 40px rgba(0,0,0,.95));
+    }
+    .dive-frame{
+      background:#060606;
+      border:1.5px solid rgba(240,237,232,.18);
+      border-radius:3px;
+      box-shadow:
+        32px 24px 80px rgba(0,0,0,.92),
+        0 0 0 1px rgba(255,255,255,.04),
+        inset 0 1px rgba(255,255,255,.05);
+      overflow:hidden;
+      position:relative;
+    }
+    /* Chrome title bar */
+    .dive-frame::before{
+      content:'● ● ●   NIGHTSHADE ADX-1 — LIVE FEED';
+      display:block;
+      padding:7px 14px;
+      font-family:var(--mono);font-size:6.5px;letter-spacing:.14em;
+      color:rgba(240,237,232,.22);
+      background:rgba(255,255,255,.025);
+      border-bottom:1px solid rgba(240,237,232,.07);
+    }
+    .dive-screen{position:relative}
+    .dive-screen video{
+      display:block;width:100%;
+      aspect-ratio:16/9;object-fit:cover;
+      filter:contrast(1.18) saturate(.55) brightness(.82);
+    }
+    /* HUD overlays on video */
+    .dive-hud{
+      position:absolute;bottom:0;left:0;right:0;
+      padding:10px 14px;
+      background:linear-gradient(to top,rgba(0,0,0,.75),transparent);
+      display:flex;justify-content:space-between;align-items:flex-end;
+      pointer-events:none;
+    }
+    .dive-hud-l,.dive-hud-r{
+      font-family:var(--mono);font-size:7px;
+      letter-spacing:.2em;text-transform:uppercase;
+    }
+    .dive-hud-l{color:var(--accent)}  /* red LIVE indicator */
+    .dive-hud-r{color:rgba(204,202,194,.5)}
+    /* Scanline on video */
+    .dive-screen::after{
+      content:'';position:absolute;inset:0;pointer-events:none;
+      background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,.06) 3px 4px);
+    }
+
+    /* ─ bigger stats in all panels ──── */
+    .stat .num{font-family:var(--sans);font-weight:700;font-size:44px;letter-spacing:-.02em;line-height:1;color:var(--text-1)}
+    .stat .num .u{font-family:var(--mono);font-size:11px;color:var(--text-2);font-weight:400;letter-spacing:.08em;margin-left:3px}
+    .stat .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2);margin-top:8px}
+    .stat{padding:18px 22px 16px}
+    .kv-row{padding:13px 16px}
+    .fan-item .t{font-size:15px}
+    .phase .pt{font-size:14px}
+    .role .rt{font-size:13px}
+    .pnote{font-size:13px;line-height:1.76}
+    .chip{font-size:10.5px;padding:11px 15px}
+
+    /* ─ panel boarding-pass parity — same language as deployment cards ── */
+    /* Station code shown right-side of tag header */
+    .tag-code{
+      font-family:var(--sans);font-size:18px;font-weight:600;
+      letter-spacing:-.01em;color:var(--white);
+      margin-left:auto;opacity:.75
+    }
+    /* Technical measurement scale at panel base — replaces barcode */
+    .panel-foot{
+      border-top:1.5px dashed rgba(240,237,232,.14);
+      height:36px;position:relative;overflow:hidden;
+      display:flex;justify-content:space-between;align-items:flex-end;
+      padding:0 14px 7px;
+    }
+    /* Major ticks (every 20px) + minor ticks (every 5px) */
+    .panel-foot::before{
+      content:'';
+      position:absolute;top:0;left:0;right:0;height:12px;
+      background:
+        repeating-linear-gradient(90deg,
+          rgba(240,237,232,.55) 0 1px,transparent 1px 20px),
+        repeating-linear-gradient(90deg,
+          rgba(240,237,232,.2) 0 .5px,transparent .5px 5px);
+    }
+    /* Registration crosshair mark at centre-top of foot */
+    .panel-foot::after{
+      content:'';
+      position:absolute;top:-4px;left:50%;transform:translateX(-50%);
+      width:8px;height:8px;
+      border:1px solid rgba(240,237,232,.35);
+      border-radius:50%;
+    }
+    .pf-id,.pf-ref{
+      font-family:var(--mono);font-size:6px;letter-spacing:.2em;
+      text-transform:uppercase;color:rgba(204,202,194,.28);
+      position:relative;z-index:1;
+    }
+    /* ─ panel route strip (origin → dest) used in some panels ─── */
+    .panel-route{
+      padding:14px 22px 12px;
+      display:grid;grid-template-columns:1fr 24px 1fr;
+      align-items:center;gap:6px;
+      border-bottom:1px solid rgba(240,237,232,.07);
+    }
+    .panel-code{
+      display:block;font-family:var(--sans);font-size:26px;font-weight:600;
+      letter-spacing:-.015em;color:var(--text-1);line-height:1
+    }
+    .panel-city{
+      display:block;font-family:var(--mono);font-size:6px;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--text-2);margin-top:3px
+    }
+    .panel-arr{font-family:var(--mono);font-size:11px;color:rgba(240,237,232,.22);text-align:center}
+
+    /* ═══════════════════════════════════════════════════════════
+       GAME UI — loading/materialization overlay
+       ═══════════════════════════════════════════════════════════ */
+    .gm-overlay{
+      position:fixed;inset:0;z-index:88;
+      background:var(--bg);
+      display:flex;align-items:center;justify-content:center;
+      transition:opacity 1.4s var(--ease);
+    }
+    .gm-overlay.gone{opacity:0;pointer-events:none}
+    /* corner brackets in neon red */
+    .gmc{position:absolute;width:30px;height:30px;border:1.5px solid rgba(204,36,36,.55)}
+    .gmc.tl{top:32px;left:32px;border-right:0;border-bottom:0}
+    .gmc.tr{top:32px;right:32px;border-left:0;border-bottom:0}
+    .gmc.bl{bottom:32px;left:32px;border-right:0;border-top:0}
+    .gmc.br{bottom:32px;right:32px;border-left:0;border-top:0}
+    /* scanlines */
+    .gm-scan{position:absolute;inset:0;pointer-events:none;
+      background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,.07) 3px 4px)}
+    .gm-content{
+      display:flex;flex-direction:column;align-items:center;gap:44px;
+      max-width:480px;width:100%;padding:0 24px;
+      position:relative;z-index:1;
+    }
+    .gm-top{text-align:center}
+    .gm-eye{font-family:var(--mono);font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--text-2);margin-bottom:14px}
+    .gm-title{font-family:var(--sans);font-weight:700;
+      font-size:clamp(64px,13vw,140px);letter-spacing:-.05em;line-height:.86;color:var(--text-1)}
+    .gm-sub{font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-2);margin-top:12px}
+    /* menu buttons */
+    .gm-menu{display:flex;flex-direction:column;gap:2px;width:100%}
+    .gm-btn{
+      font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+      color:var(--text-2);background:transparent;
+      border:1px solid rgba(240,237,232,.1);padding:15px 20px;
+      cursor:pointer;text-align:left;transition:color .18s,border-color .18s,background .18s;width:100%;
+    }
+    .gm-btn:hover{color:#CC2424;border-color:rgba(204,36,36,.45);background:rgba(204,36,36,.04)}
+    .gm-btn.active{color:#CC2424;border-color:rgba(204,36,36,.6);background:rgba(204,36,36,.06)}
+    .gm-btn.active::before{content:'▶  '}
+    .gm-btn.dim{opacity:.28;cursor:default;pointer-events:none}
+    /* status / progress bar */
+    .gm-foot{width:100%;display:flex;flex-direction:column;gap:8px}
+    .gm-status-row{display:flex;justify-content:space-between}
+    .gm-stat-txt{font-family:var(--mono);font-size:7.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2)}
+    .gm-stat-txt b{color:var(--white);font-weight:400}
+    .gm-bar{height:1px;background:rgba(240,237,232,.1);position:relative;overflow:hidden}
+    .gm-bar-fill{height:100%;background:#CC2424;width:0%;transition:width .3s linear;
+      box-shadow:0 0 8px rgba(204,36,36,.5)}
+
+    /* ═══════════════════════════════════════════════════════════
+       DEPARTURE BOARD — jet stats as flight manifest
+       ═══════════════════════════════════════════════════════════ */
+    .dep-sec{position:relative;z-index:5;background:var(--bg);border-top:1px solid var(--border)}
+    .dep-inner{max-width:1400px;margin:0 auto;padding:80px 72px}
+    .dep-eyebrow{font-family:var(--mono);font-size:7.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--text-2);margin-bottom:10px}
+    .dep-sec-title{font-family:var(--sans);font-size:clamp(22px,2.8vw,38px);font-weight:700;letter-spacing:-.01em;text-transform:none;color:var(--text-1);margin-bottom:36px}
+    .dep-board{background:#020202;border:1px solid rgba(240,237,232,.13)}
+    .dep-head{
+      background:#000;padding:12px 24px;
+      display:flex;align-items:center;justify-content:space-between;
+      border-bottom:1px solid rgba(240,237,232,.09)
+    }
+    .dep-head-l{display:flex;align-items:center;gap:12px}
+    .dep-head-ico{font-size:15px;color:var(--white)}
+    .dep-head-title{font-family:var(--mono);font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--white)}
+    .dep-head-sub{font-family:var(--mono);font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-2)}
+    .dep-cols,.dep-row{
+      display:grid;grid-template-columns:150px 1fr 130px 90px;
+      padding:0 24px;align-items:center
+    }
+    .dep-cols{
+      padding:7px 24px 6px;
+      border-bottom:1px solid rgba(240,237,232,.07)
+    }
+    .dep-col-hd{font-family:var(--mono);font-size:6px;letter-spacing:.24em;text-transform:uppercase;color:var(--text-2)}
+    .dep-row{
+      min-height:52px;
+      border-bottom:1px solid rgba(240,237,232,.05);
+      transition:background .2s
+    }
+    .dep-row:hover{background:rgba(240,237,232,.022)}
+    .dep-row:last-child{border-bottom:none}
+    .dep-num{
+      font-family:var(--mono);font-weight:700;font-size:21px;
+      letter-spacing:-.01em;color:#CC2424;
+      text-shadow:0 0 10px rgba(204,36,36,.22)
+    }
+    .dep-num .du{font-size:9px;letter-spacing:.08em;color:rgba(204,36,36,.6);margin-left:2px}
+    .dep-dest{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--white)}
+    .dep-status{font-family:var(--mono);font-size:7px;letter-spacing:.2em;text-transform:uppercase;color:rgba(204,202,194,.4)}
+    .dep-system{font-family:var(--mono);font-size:6.5px;letter-spacing:.14em;color:rgba(204,202,194,.28);text-align:right}
+    .dep-row.clsf .dep-num{color:rgba(204,36,36,.3);text-shadow:none}
+    .dep-row.clsf .dep-dest{color:rgba(204,202,194,.28)}
+
+    /* ═══════════════════════════════════════════════════════════
+       BOARDING PASSES
+       ═══════════════════════════════════════════════════════════ */
+    .pass-sec{position:relative;z-index:5;background:var(--bg);padding:0 72px;border-top:1px solid var(--border)}
+    .pass-sec-head{max-width:1400px;margin:0 auto;padding:72px 0 44px;border-bottom:1px solid var(--border)}
+    .pass-grid{max-width:1400px;margin:0 auto;padding:44px 0 64px;display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+    .pass{
+      background:#030303;border:1px solid rgba(240,237,232,.13);
+      display:flex;flex-direction:column;position:relative;overflow:hidden
+    }
+    /* airline header */
+    .pass-airline-row{
+      padding:14px 18px 10px;
+      display:flex;justify-content:space-between;align-items:center;
+      border-bottom:1px solid var(--border)
+    }
+    .pass-airline{font-family:var(--mono);font-size:6.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--text-2)}
+    .pass-ico{font-size:14px;color:rgba(240,237,232,.5)}
+    /* route */
+    .pass-route{
+      padding:18px 18px 14px;
+      display:grid;grid-template-columns:1fr 28px 1fr;
+      align-items:center;gap:8px
+    }
+    .pass-code{display:block;font-family:var(--sans);font-size:32px;font-weight:900;letter-spacing:-.02em;color:var(--text-1);line-height:1}
+    .pass-city{display:block;font-family:var(--mono);font-size:6px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2);margin-top:3px}
+    .pass-arr{font-family:var(--mono);font-size:11px;color:rgba(240,237,232,.25);text-align:center}
+    /* passenger */
+    .pass-pax{padding:8px 18px 12px;border-top:1px solid var(--border)}
+    .pf-lbl{font-family:var(--mono);font-size:5.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--text-2);display:block}
+    .pf-val{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--white);margin-top:2px;display:block}
+    .pf-val.lg{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:-.01em}
+    /* details grid */
+    .pass-details{
+      display:grid;grid-template-columns:repeat(3,1fr);
+      gap:1px;background:rgba(240,237,232,.07);
+      padding:1px 0 0;border-top:1px solid var(--border)
+    }
+    .pass-field{background:#030303;padding:10px 12px}
+    /* stat pair */
+    .pass-stats{
+      display:grid;grid-template-columns:1fr 1fr;
+      gap:1px;background:rgba(240,237,232,.07);
+      border-top:1px solid var(--border)
+    }
+    .pass-stat{background:#030303;padding:12px 14px}
+    .ps-v{font-family:var(--sans);font-size:26px;font-weight:900;letter-spacing:-.03em;color:var(--text-1);line-height:1}
+    .ps-u{font-family:var(--mono);font-size:8px;color:var(--text-2);margin-left:2px}
+    .ps-l{font-family:var(--mono);font-size:6px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-2);margin-top:4px}
+    /* dashed tear + notches */
+    .pass-tear{
+      height:0;border-top:1.5px dashed rgba(240,237,232,.16);
+      margin:0;position:relative
+    }
+    .pass-tear::before,.pass-tear::after{
+      content:'';position:absolute;width:13px;height:13px;
+      background:var(--bg);border:1px solid rgba(240,237,232,.16);border-radius:50%;
+      top:-7px
+    }
+    .pass-tear::before{left:-7px}
+    .pass-tear::after{right:-7px}
+    /* barcode */
+    .pass-bc-wrap{padding:12px 18px 14px}
+    .pass-bc{
+      height:34px;
+      background:
+        linear-gradient(90deg,
+          rgba(240,237,232,.78) 0 2px,transparent 2px 4px,
+          rgba(240,237,232,.78) 4px 6px,transparent 6px 9px,
+          rgba(240,237,232,.78) 9px 10px,transparent 10px 12px,
+          rgba(240,237,232,.78) 12px 15px,transparent 15px 17px,
+          rgba(240,237,232,.78) 17px 19px,transparent 19px 21px,
+          rgba(240,237,232,.78) 21px 22px,transparent 22px 25px,
+          rgba(240,237,232,.78) 25px 28px,transparent 28px 30px,
+          rgba(240,237,232,.78) 30px 33px,transparent 33px 35px,
+          rgba(240,237,232,.78) 35px 36px,transparent 36px 40px,
+          rgba(240,237,232,.78) 40px 42px,transparent 42px 45px,
+          rgba(240,237,232,.78) 45px 48px,transparent 48px 50px,
+          rgba(240,237,232,.78) 50px 51px,transparent 51px 54px,
+          rgba(240,237,232,.78) 54px 56px,transparent 56px 100%
+        )
+    }
+    .pass-bc-num{
+      margin-top:5px;text-align:center;
+      font-family:var(--mono);font-size:5.5px;letter-spacing:.28em;
+      color:rgba(204,202,194,.3)
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       GATE SIGNS
+       ═══════════════════════════════════════════════════════════ */
+    .gate-sec{
+      position:relative;z-index:5;
+      display:grid;grid-template-columns:repeat(3,1fr);
+      border-top:1px solid var(--border)
+    }
+    .gate-card{
+      background:#020202;padding:44px 48px;
+      border-right:1px solid var(--border);
+      display:flex;flex-direction:column;justify-content:space-between;
+      min-height:200px
+    }
+    .gate-card:last-child{border-right:none}
+    .gate-top{display:flex;justify-content:space-between;align-items:flex-start}
+    .gate-lbl{font-family:var(--mono);font-size:7px;letter-spacing:.28em;text-transform:uppercase;color:var(--text-2)}
+    .gate-arrow{font-family:var(--mono);font-size:22px;color:rgba(240,237,232,.2)}
+    .gate-num{font-family:var(--sans);font-size:clamp(52px,5.5vw,80px);font-weight:900;letter-spacing:-.04em;color:var(--text-1);line-height:.9;margin-top:10px}
+    .gate-dest{font-family:var(--mono);font-size:8px;letter-spacing:.2em;text-transform:uppercase;color:var(--white);margin-top:14px}
+    .gate-sub{font-family:var(--mono);font-size:6.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-2);margin-top:4px}
+
+    /* ═══════════════════════════════════════════════════════════
+       FIELD DOCUMENTATION — video (full ratio) + unique photos
+       ═══════════════════════════════════════════════════════════ */
+    .fielddoc-sec{position:relative;z-index:5;background:var(--bg);border-top:1px solid var(--border)}
+    .fielddoc-head{
+      max-width:1400px;margin:0 auto;padding:72px 72px 44px;
+      display:flex;justify-content:space-between;align-items:flex-end;
+      border-bottom:1px solid var(--border)
+    }
+    .fielddoc-hd{font-family:var(--sans);font-size:clamp(22px,3vw,36px);color:var(--text-1)}
+    .fielddoc-meta{font-family:var(--mono);font-size:7px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);text-align:right;line-height:2.2}
+    .fielddoc-meta b{color:var(--white);font-weight:400}
+    /* video full ratio — no cropping */
+    .vid-full{background:#000;display:flex;justify-content:center;position:relative;border-bottom:1px solid var(--border)}
+    .vid-full video{width:100%;height:auto;display:block;object-fit:contain;max-height:82vh}
+    .vid-overlay{
+      position:absolute;bottom:0;left:0;right:0;
+      padding:14px 72px;
+      background:linear-gradient(to top,rgba(4,4,4,.82),transparent);
+      display:flex;justify-content:space-between;align-items:flex-end;
+      pointer-events:none
+    }
+    .vid-id{font-family:var(--mono);font-size:6.5px;letter-spacing:.22em;text-transform:uppercase;color:rgba(204,202,194,.5)}
+    .vid-title{font-family:var(--mono);font-size:7.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--white)}
+    /* photo grid — 4 UNIQUE field photos, NO repeats */
+    .photo-grid{
+      max-width:1400px;margin:0 auto;padding:2px 72px 80px;
+      display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin-top:2px
+    }
+    .photo-item{position:relative;overflow:hidden;background:#080808}
+    .photo-item--a{grid-column:span 5}
+    .photo-item--b{grid-column:span 4}
+    .photo-item--c{grid-column:span 3}
+    .photo-item--d{grid-column:span 7}
+    .photo-item--e{grid-column:span 5}
+    .photo-img{
+      width:100%;height:270px;object-fit:cover;display:block;
+      filter:brightness(.78) saturate(.48) contrast(1.12);
+      transition:filter .5s var(--ease)
+    }
+    .photo-item--a .photo-img,.photo-item--d .photo-img{height:270px}
+    .photo-item:hover .photo-img{filter:brightness(.9) saturate(.7) contrast(1.06)}
+    .photo-cap{
+      position:absolute;bottom:0;left:0;right:0;padding:8px 12px;
+      background:linear-gradient(to top,rgba(4,4,4,.82),transparent);
+      display:flex;justify-content:space-between;align-items:flex-end
+    }
+    .photo-id{font-family:var(--mono);font-size:6px;letter-spacing:.22em;text-transform:uppercase;color:rgba(204,202,194,.5)}
+    .photo-lbl{font-family:var(--mono);font-size:6.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--white)}
+
+    /* ═══════════════════════════════════════════════════════════
+       DOSSIER — no duplicates from gallery above
+       ═══════════════════════════════════════════════════════════ */
+    .doss-sec{position:relative;z-index:5;background:var(--bg);padding:0 72px 140px;border-top:1px solid var(--border)}
+    .doss-inner{max-width:1060px;margin:0 auto;position:relative}
+    .doss-doc{
+      position:relative;background:rgba(230,226,218,.035);
+      border:1px solid rgba(240,237,232,.11);padding:44px 52px 48px
+    }
+    .doss-doc::before{
+      content:'CLASSIFIED';position:absolute;top:50%;left:50%;
+      transform:translate(-50%,-50%) rotate(-28deg);
+      font-family:var(--sans);font-size:clamp(54px,7.5vw,100px);
+      letter-spacing:.18em;text-transform:uppercase;
+      color:rgba(240,237,232,.022);pointer-events:none;white-space:nowrap;user-select:none
+    }
+    .doss-doc::after{content:'';position:absolute;bottom:-1px;right:-1px;width:12px;height:12px;border-bottom:1px solid rgba(240,237,232,.45);border-right:1px solid rgba(240,237,232,.45)}
+    .doss-tl{position:absolute;top:-1px;left:-1px;width:12px;height:12px;border-top:1px solid rgba(240,237,232,.45);border-left:1px solid rgba(240,237,232,.45)}
+    .doss-class{font-family:var(--mono);font-size:7px;letter-spacing:.34em;text-transform:uppercase;color:rgba(204,202,194,.45);border-bottom:1px solid rgba(240,237,232,.07);padding-bottom:14px;margin-bottom:20px;display:flex;justify-content:space-between}
+    .doss-id-row{display:flex;gap:32px;margin-bottom:22px;flex-wrap:wrap}
+    .doss-id-row span{font-family:var(--mono);font-size:7px;letter-spacing:.17em;text-transform:uppercase;color:var(--text-2)}
+    .doss-id-row span b{color:var(--white);font-weight:400}
+    .doss-title{font-family:var(--sans);font-size:clamp(26px,3.8vw,48px);color:var(--text-1);margin-bottom:5px}
+    .doss-subtitle{font-family:var(--mono);font-size:7.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-2);margin-bottom:28px}
+    .doss-rule{height:1px;background:rgba(240,237,232,.07);margin:18px 0}
+    .doss-body{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:start}
+    .doss-specs{display:grid;gap:1px;background:rgba(240,237,232,.07)}
+    .doss-row{background:rgba(4,4,4,.55);display:flex;justify-content:space-between;align-items:center;padding:8px 12px;gap:14px}
+    .dk{font-family:var(--mono);font-size:6.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2)}
+    .dv{font-family:var(--mono);font-size:7.5px;letter-spacing:.06em;color:var(--text-1);text-align:right;display:flex;align-items:center;gap:5px}
+    .rx{display:inline-block;background:rgba(204,202,194,.44);color:transparent;user-select:none;height:.72em;vertical-align:middle;border-radius:1px}
+    .doss-img-wrap{position:relative}
+    .doss-img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;filter:brightness(.72) saturate(.38) contrast(1.12)}
+    .doss-img-label{position:absolute;top:0;left:0;right:0;padding:7px 11px;background:rgba(4,4,4,.72);font-family:var(--mono);font-size:6px;letter-spacing:.2em;text-transform:uppercase;color:rgba(204,202,194,.55);display:flex;justify-content:space-between}
+    .doss-img-corner{position:absolute;bottom:8px;right:10px;font-family:var(--mono);font-size:5.5px;letter-spacing:.2em;text-transform:uppercase;color:rgba(204,202,194,.34)}
+    .doss-redact-para{margin-top:20px;font-family:var(--mono);font-size:7.5px;letter-spacing:.04em;line-height:2;color:var(--text-2)}
+    .rxb{display:inline-block;background:rgba(204,202,194,.32);color:transparent;user-select:none;height:.68em;vertical-align:middle;border-radius:1px;margin:0 2px}
+    .doss-foot{margin-top:24px;padding-top:14px;border-top:1px solid rgba(240,237,232,.07);display:flex;justify-content:space-between;font-family:var(--mono);font-size:6px;letter-spacing:.22em;text-transform:uppercase;color:rgba(204,202,194,.28)}
+
+    @media(max-width:820px){
+      .station{padding:90px 20px}
+      .nav{padding:0 20px}
+      .nlinks,.nbtn{display:none}
+      .tel.t,.tel.b{left:20px}
+      .panel{max-width:100%;padding:20px 16px}
+      .roles{grid-template-columns:repeat(2,1fr)}
+      .idx,.vst,.cls{display:none}
+      .gs-grid{grid-template-columns:1fr 1fr;padding:0 20px}
+      .gs-item--a,.gs-item--b,.gs-item--c,.gs-item--d,.gs-item--e{grid-column:span 1;grid-row:span 1}
+      .doss-sec{padding:0 20px 80px}
+      .doss-body{grid-template-columns:1fr}
+      .gs-video-overlay{padding:20px}
+      .gs-header,.sec-head{padding:60px 20px 40px}
+    }
+  </style>
+</head>
+<body>
+
+<!-- Particle materialization canvas — overlays 3D stage -->
+<canvas id="mat-canvas"></canvas>
+
+<!-- Game UI overlay — shown before model materialises -->
+<div id="game-ui" class="gm-overlay">
+  <div class="gmc tl"></div><div class="gmc tr"></div>
+  <div class="gmc bl"></div><div class="gmc br"></div>
+  <div class="gm-scan"></div>
+  <div class="gm-content">
+    <div class="gm-top">
+      <p class="gm-eye">Apollyon Dynamics &nbsp;·&nbsp; Systems Teardown</p>
+      <h1 class="gm-title">NIGHTSHADE</h1>
+      <p class="gm-sub">ADX-1 &nbsp;·&nbsp; Mk III &nbsp;·&nbsp; Autonomous Strike Platform</p>
+    </div>
+    <div class="gm-menu" id="gm-menu">
+      <button class="gm-btn active" id="gm-init">[ INITIALIZE SCAN ]</button>
+      <button class="gm-btn" id="gm-cfg">[ CONFIGURE VIEW ]</button>
+      <button class="gm-btn dim">[ CLASSIFIED ACCESS ]</button>
+    </div>
+    <div class="gm-foot">
+      <div class="gm-status-row">
+        <span class="gm-stat-txt">STATUS: <b id="gm-sys">STANDBY</b></span>
+        <span class="gm-stat-txt" id="gm-pct">0%</span>
+      </div>
+      <div class="gm-bar"><div class="gm-bar-fill" id="gm-bar"></div></div>
+    </div>
+  </div>
+</div>
+<!-- Minimal loader (hidden behind game UI) -->
+<div id="loader"><div class="ln">Initialising — Nightshade Mk III</div><div class="lb"><i></i></div></div>
+
+<div id="pattern"></div>
+<div id="stars"></div>
+<canvas id="stage"></canvas>
+<!-- Model veil — covers 3D canvas at hero (station 0), fades out on scroll -->
+<div id="model-veil"></div>
+<div id="grain"></div>
+<div id="scanlines"></div>
+<div id="targets"></div>
+
+<!-- nav -->
+<header class="nav">
+  <div class="nl">
+    <a href="/"><img src="/logo/apollyon-logo-white-v2.svg" alt="Apollyon Dynamics"/></a>
+    <div class="nrule"></div>
+    <span class="ncrumb">Products&nbsp;/&nbsp;<strong>Nightshade Mk III</strong></span>
+  </div>
+  <div class="nr">
+    <ul class="nlinks">
+      <li><a href="/nightshade-prototype.html">← Overview</a></li>
+      <li><a class="on">Systems</a></li>
+      <li><a href="/">Datasheet</a></li>
+    </ul>
+    <a class="nbtn" href="/">Schedule a Demo</a>
+  </div>
+</header>
+
+<!-- HUD -->
+<div class="hc"><span class="co tl"></span><span class="co tr"></span><span class="co bl"></span><span class="co br"></span></div>
+<div class="ret"><div class="r2"></div></div>
+<div class="tel t"><span>FOCUS&nbsp;&nbsp;<b id="tFocus">FULL AIRFRAME</b></span><span>STN&nbsp;&nbsp;<b id="tStn">00 / 07</b></span></div>
+<div class="tel b"><span class="lv">● LIVE</span><span>ZOOM&nbsp;<b id="tZoom">1.00×</b></span><span>SYS&nbsp;<b id="tSys">NOMINAL</b></span></div>
+<div class="vst">APOLLYON DYNAMICS — NIGHTSHADE MK III — SYSTEMS TEARDOWN — CONTROLLED TECHNOLOGY</div>
+<div class="cls"><span class="hi">ADX-1 / MK III</span><span>CLASSIFICATION: TS/SCI</span><span>NOT FOR PUBLIC DISTRIBUTION</span></div>
+<div class="idx" id="idx"></div>
+
+<!-- scroll track -->
+<main class="track">
+
+  <section class="station center" data-stn="0" data-focus="FULL AIRFRAME" data-sys="NOMINAL">
+    <div class="reveal in">
+      <p class="tag" style="justify-content:center">Autonomous Strike UAV</p>
+      <h1 class="h-hero">NIGHTSHADE</h1>
+      <p class="h-sub">Mk III &nbsp;—&nbsp; High-Speed Autonomous Strike Platform</p>
+    </div>
+  </section>
+
+  <section class="station right" data-stn="1" data-focus="COMPOSITE AIRFRAME" data-sys="NOMINAL">
+    <div class="panel reveal"><div class="ptl"></div>
+      <p class="tag">01 — Airframe</p>
+      <h2 class="h-stn">Composite<br/>Strike Body</h2>
+      <div class="stats">
+        <div class="stat"><div class="num" data-to="70"><span class="u">kg</span></div><div class="lbl">Max Takeoff</div></div>
+        <div class="stat"><div class="num" data-to="2.0" data-dec="1"><span class="u">m</span></div><div class="lbl">Wingspan</div></div>
+        <div class="stat"><div class="num" data-to="3.1" data-dec="1"><span class="u">m</span></div><div class="lbl">Fuselage</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="station left" data-stn="2" data-focus="TURBOJET / TAIL" data-sys="PROPULSION">
+    <div class="panel reveal"><div class="ptl"></div>
+      <p class="tag">02 — Propulsion &amp; Launch</p>
+      <h2 class="h-stn">Jet-Class<br/>Loitering Munition</h2>
+      <div class="bigstat"><div class="v" data-to="550" data-suffix="+">0<span class="u"> KM/H CRUISE</span></div></div>
+      <div class="reveal chiprow"><span class="chip">Ground Mobile Launcher</span><span class="chip">Catapult Rail</span><span class="chip">Ship-Based</span><span class="chip">Air Launch</span><span class="chip">Parachute Recovery</span></div>
+    </div>
+  </section>
+
+  <section class="station" data-stn="3" data-focus="FLIGHT PROFILE" data-sys="FLIGHT" id="station-dive">
+
+    <!-- Col 1: Stage Manager monitor — far LEFT, angled toward the jet -->
+    <div class="dive-monitor reveal">
+      <div class="dive-frame">
+        <div class="dive-screen">
+          <video autoplay muted loop playsinline>
+            <source src="/ais-strike.mp4" type="video/mp4"/>
+          </video>
+          <div class="dive-hud">
+            <span class="dive-hud-l">● LIVE FEED — TERMINAL APPROACH</span>
+            <span class="dive-hud-r">SYS 03 / 07</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Col 2 is implicitly empty — 3D jet visible through the center -->
+
+    <!-- Col 3: Data panel — far RIGHT -->
+    <div class="panel reveal"><div class="ptl"></div>
+      <p class="tag">03 — Performance</p>
+      <h2 class="h-stn">Terminal Dive</h2>
+      <div class="bigstat"><div class="v" data-to="650" data-suffix="+">0<span class="u"> KM/H</span></div></div>
+      <div class="stats">
+        <div class="stat"><div class="num" data-text="120–150"></div><div class="lbl">Range · km</div></div>
+        <div class="stat"><div class="num" data-text="40–60"></div><div class="lbl">Endurance · min</div></div>
+      </div>
+    </div>
+
+  </section>
+
+  <section class="station right" data-stn="4" data-focus="EO/IR SEEKER HEAD" data-sys="GUIDANCE">
+    <div class="panel reveal"><div class="ptl"></div>
+      <p class="tag">04 — Navigation &amp; Guidance</p>
+      <h2 class="h-stn">GNSS-Denied<br/>Capable</h2>
+      <div class="kv">
+        <div class="kv-row"><span class="k">Constellation</span><span class="v">GPS · GLONASS · Galileo · NavIC</span></div>
+        <div class="kv-row"><span class="k">Backup Nav</span><span class="v">Inertial Navigation System</span></div>
+        <div class="kv-row"><span class="k">Anti-Jam</span><span class="v">INS Autonomous Fallback</span></div>
+        <div class="kv-row"><span class="k">Retasking</span><span class="v">Mid-Course Capable</span></div>
+        <div class="kv-row"><span class="k">Modes</span><span class="v">MITL · Pre-Planned · Auto</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="station left" data-stn="5" data-focus="WARHEAD BAY" data-sys="ARMED">
+    <div class="panel reveal"><div class="ptl"></div>
+      <p class="tag">05 — Payload</p>
+      <!-- 15 uses same bigstat style as 550+ and 650+ for number uniformity -->
+      <div class="bigstat" style="margin-bottom:2px">
+        <div class="v">15<span class="u"> KG</span></div>
+      </div>
+      <div class="h-stn" style="padding:0 22px 16px;border-bottom:1px solid rgba(240,237,232,.07)">Modular Warhead</div>
+      <div class="reveal fan">
+        <div class="fan-item"><span class="k">K1</span><span class="t">HE-Fragmentation</span><span class="d">Area / Soft</span></div>
+        <div class="fan-item"><span class="k">K2</span><span class="t">Tandem Shaped Charge</span><span class="d">Anti-Armour</span></div>
+        <div class="fan-item"><span class="k">K3</span><span class="t">Kinetic Penetrator</span><span class="d">Hardened</span></div>
+      </div>
+      <div class="reveal chiprow"><span class="chip">EO/IR Seeker</span><span class="chip">Anti-Radiation</span><span class="chip">GNSS Impact</span><span class="chip">Multi-Sensor Fusion</span></div>
+    </div>
+  </section>
+
+  <section class="station right" data-stn="6" data-focus="EW / SIGNATURE" data-sys="EW ACTIVE">
+    <div class="panel reveal"><div class="ptl"></div>
+      <p class="tag">06 — Survivability</p>
+      <h2 class="h-stn">Hardened &amp;<br/>Low-Observable</h2>
+      <div class="kv">
+        <div class="kv-row"><span class="k">Data Link</span><span class="v">Encrypted RF · LOS</span></div>
+        <div class="kv-row"><span class="k">Anti-Jam</span><span class="v">Frequency Hopping</span></div>
+        <div class="kv-row"><span class="k">Range</span><span class="v">120–150 km · Video</span></div>
+        <div class="kv-row"><span class="k">Signature</span><span class="v">Passive RCS · IR Sim</span></div>
+        <div class="kv-row"><span class="k">Payload EW</span><span class="v">Jammer · Chaff / Flare</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Station 7 — Battlespace: Anduril-style bold spaced text, no grid -->
+  <section class="station bs-station" data-stn="7" data-focus="MISSION ENVELOPE" data-sys="DEPLOYED">
+    <div class="bs-wrap reveal">
+      <p class="tag" style="justify-content:center">07 — Deployment</p>
+
+      <!-- Bold spaced heading — Anduril reference style -->
+      <h2 class="bs-heading reveal">
+        <span class="bs-line">BUILT&nbsp;&nbsp;FOR&nbsp;&nbsp;THE</span>
+        <span class="bs-line bs-line-accent">BATTLESPACE</span>
+      </h2>
+
+      <!-- Roles as spaced inline text — no grid borders -->
+      <div class="bs-roles reveal">
+        <span>Precision Strike</span>
+        <span class="bs-sep">·</span>
+        <span>SEAD</span>
+        <span class="bs-sep">·</span>
+        <span>Counter-Radar</span>
+        <span class="bs-sep">·</span>
+        <span>Deep Interdiction</span>
+        <span class="bs-sep">·</span>
+        <span>Anti-Ship Strike</span>
+        <span class="bs-sep">·</span>
+        <span>Loitering Strike</span>
+        <span class="bs-sep">·</span>
+        <span>Time-Sensitive Targets</span>
+        <span class="bs-sep">·</span>
+        <span>Decoy / EW</span>
+      </div>
+
+      <!-- Spec chips below -->
+      <div class="reveal chiprow" style="justify-content:center;margin-top:28px">
+        <span class="chip">−30°C to +50°C</span>
+        <span class="chip">All-Weather</span>
+        <span class="chip">Day / Night</span>
+        <span class="chip">No Airfield Required</span>
+        <span class="chip">Ready in &lt; 30 min</span>
+        <span class="chip key">MTCR Class II</span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div id="hint">Scroll to traverse systems<div class="bar"></div></div>
+<div id="progBar"><div id="progFill"></div></div>
+
+<!-- ═══ TACTICAL PROFILES ═════════════════════════════════════════════ -->
+<section class="tac-sec">
+  <div class="tac-sec-head reveal">
+    <p class="spec-eyebrow">Mission Configurations</p>
+    <h2 class="dep-sec-title">Tactical Deployment Profiles</h2>
+  </div>
+
+  <div class="tac-grid reveal">
+
+    <!-- Tactical Profile 01 — Direct Strike -->
+    <div class="panel"><div class="ptl"></div>
+      <p class="tag">Profile 01 — Direct Strike</p>
+      <div class="tac-vis" data-code="01"><div class="tac-cross"></div><span class="tac-label">Direct Strike // Single-Use</span></div>
+      <h2 class="h-stn">Single-Use<br/>Strike</h2>
+      <div class="kv" style="border-top:1px solid rgba(240,237,232,.07)">
+        <div class="kv-row"><span class="k">Employment</span><span class="v">Mission Expendable</span></div>
+        <div class="kv-row"><span class="k">Launch Platform</span><span class="v">Rail · Ship · Air-Drop</span></div>
+        <div class="kv-row"><span class="k">Ingress Speed</span><span class="v">550+ km/h</span></div>
+        <div class="kv-row"><span class="k">Terminal Speed</span><span class="v">650+ km/h</span></div>
+        <div class="kv-row"><span class="k">Warhead</span><span class="v">HE-Frag · Area / Soft</span></div>
+        <div class="kv-row"><span class="k">Range</span><span class="v">120–150 km</span></div>
+      </div>
+    </div>
+
+    <!-- Tactical Profile 02 — Anti-Armour / Loiter Strike -->
+    <div class="panel"><div class="ptl"></div>
+      <p class="tag">Profile 02 — Loiter Strike</p>
+      <div class="tac-vis" data-code="02"><div class="tac-cross"></div><span class="tac-label">Loiter Strike // Anti-Armour</span></div>
+      <h2 class="h-stn">Armour<br/>Defeat</h2>
+      <div class="kv" style="border-top:1px solid rgba(240,237,232,.07)">
+        <div class="kv-row"><span class="k">Employment</span><span class="v">Loiter Strike · MITL</span></div>
+        <div class="kv-row"><span class="k">Seeker Mode</span><span class="v">EO/IR · Anti-Radiation</span></div>
+        <div class="kv-row"><span class="k">Loiter Endurance</span><span class="v">40–60 min over AOI</span></div>
+        <div class="kv-row"><span class="k">Terminal Mode</span><span class="v">Steep Dive · Top-Attack</span></div>
+        <div class="kv-row"><span class="k">Warhead</span><span class="v">Tandem Shaped Charge</span></div>
+        <div class="kv-row"><span class="k">Retasking</span><span class="v">Mid-Course Capable</span></div>
+      </div>
+    </div>
+
+    <!-- Tactical Profile 03 — SEAD -->
+    <div class="panel"><div class="ptl"></div>
+      <p class="tag">Profile 03 — SEAD / EW</p>
+      <div class="tac-vis" data-code="03"><div class="tac-cross"></div><span class="tac-label">SEAD // Counter-Radar</span></div>
+      <h2 class="h-stn">Counter-Radar<br/>Strike</h2>
+      <div class="kv" style="border-top:1px solid rgba(240,237,232,.07)">
+        <div class="kv-row"><span class="k">Employment</span><span class="v">Pre-Planned / GNSS</span></div>
+        <div class="kv-row"><span class="k">Target</span><span class="v">Radar · SAM · C2 Node</span></div>
+        <div class="kv-row"><span class="k">Homing</span><span class="v">Anti-Radiation Seeker</span></div>
+        <div class="kv-row"><span class="k">EW Package</span><span class="v">Onboard Jammer · Decoy</span></div>
+        <div class="kv-row"><span class="k">Warhead</span><span class="v">Kinetic Penetrator</span></div>
+        <div class="kv-row"><span class="k">Survivability</span><span class="v">Low-Observable · Freq-Hop</span></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+<!-- ═══ FIELD DOCUMENTATION ══════════════════════════════════════════ -->
+<section class="fielddoc-sec">
+  <div class="fielddoc-head reveal">
+    <div>
+      <p class="dep-eyebrow">Field Documentation</p>
+      <h2 class="fielddoc-hd">Visual Record</h2>
+    </div>
+    <div class="fielddoc-meta">
+      <span><b>Nightshade ADX-1 / Mk III</b></span>
+      <span>Release: RESTRICTED</span>
+      <span>4 of 24 files declassified</span>
+    </div>
+  </div>
+
+  <!-- Video — full native ratio, no cropping -->
+  <div class="vid-full">
+    <video autoplay muted loop playsinline>
+      <source src="/Nightshade_product_video.mp4" type="video/mp4"/>
+    </video>
+    <div class="vid-overlay">
+      <span class="vid-id">VID-001 · MP4</span>
+      <span class="vid-title">Product Footage — Operational Configuration</span>
+    </div>
+  </div>
+
+  <!-- 4 UNIQUE field photos — none repeated in dossier below -->
+  <div class="photo-grid reveal d1">
+    <div class="photo-item photo-item--a">
+      <img class="photo-img" src="/unused/avif/aestheticshot_moreground.avif" alt="Ground configuration"/>
+      <div class="photo-cap">
+        <span class="photo-id">IMG-001</span>
+        <span class="photo-lbl">Deployed — ground visual</span>
+      </div>
+    </div>
+    <div class="photo-item photo-item--b">
+      <img class="photo-img" src="/unused/avif/aestheticshot_lessgrounf.avif" alt="Strike profile"/>
+      <div class="photo-cap">
+        <span class="photo-id">IMG-002</span>
+        <span class="photo-lbl">Strike profile</span>
+      </div>
+    </div>
+    <div class="photo-item photo-item--c">
+      <img class="photo-img" src="/unused/avif/basic hero 2.avif" alt="Launch posture"/>
+      <div class="photo-cap">
+        <span class="photo-id">IMG-003</span>
+        <span class="photo-lbl">Launch posture</span>
+      </div>
+    </div>
+    <div class="photo-item photo-item--d">
+      <img class="photo-img" src="/unused/avif/front high fov.avif" alt="Frontal aspect"/>
+      <div class="photo-cap">
+        <span class="photo-id">IMG-004</span>
+        <span class="photo-lbl">Frontal — EO/IR seeker</span>
+      </div>
+    </div>
+    <div class="photo-item photo-item--e">
+      <img class="photo-img" src="/1767104231745.avif" alt="System view"
+        onerror="this.style.display='none';this.parentElement.style.display='none'"/>
+      <div class="photo-cap">
+        <span class="photo-id">IMG-005</span>
+        <span class="photo-lbl">System configuration</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE    from 'three';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+
+const OBJ_URL   = '/ADX01.obj';
+const objLoader  = new OBJLoader();
+
+/* ── camera stations ─────────────────────────────────────────────────── */
+const ST = [
+  { focus:[0,0,0],      rot:[-0.10,-0.55,0.00], dist:3.20, pan: 0.00 },  // 0 hero
+  { focus:[0,0,0],      rot:[ 0.00, 0.05,0.00], dist:3.00, pan: 0.34 },  // 1 composite airframe
+  { focus:[-470,30,0],  rot:[-0.05, 0.72,0.00], dist:1.55, pan:-0.18 },  // 2 propulsion — jet shifted left
+  { focus:[0,0,0],      rot:[-0.16,-0.50,0.06], dist:4.00, pan: 0.52 },  // 3 dive — smaller, shifted right
+  { focus:[+470,5,0],   rot:[-0.08,-0.42,0.00], dist:2.00, pan: 0.58 },  // 4 guidance — bigger, much further right
+  { focus:[-20,-55,0],  rot:[ 0.30, 0.36,0.00], dist:2.20, pan:-0.34 },  // 5 payload
+  { focus:[0,0,0],      rot:[ 1.42, 0.00,0.00], dist:3.00, pan: 0.30 },  // 6 EW planform
+  { focus:[0,0,0],      rot:[-0.18, 0.00,0.00], dist:5.00, pan: 0.00 },  // 7 battlespace
+];
+const N = ST.length;
+const VIEW_DIR = new THREE.Vector3(0,0.16,1).normalize();
+
+/* ── 3D target anchors — calibrated for ADX01 model geometry ────────── */
+// ADX01 after centering: fuselage X±500, height Y±350 (Blender Z→GLTF Y),
+// width Z±143 (Blender Y→GLTF -Z). All positions in pre-FPS STL-equiv space.
+const TGTS_RAW = [
+  null, // 0 hero
+  [ // 1 Composite Airframe — side profile, target on centre fuselage
+    { pos3D:[  60,  80,  0], w:70, h:46, lbl:'COMPOSITE AIRFRAME' },
+  ],
+  [ // 2 Propulsion — tail is at -X in ADX01 (nose=+X, tail=-X)
+    { pos3D:[-420,  60,  0], w:58, h:44, lbl:'EXHAUST NOZZLE' },
+  ],
+  [ // 3 Performance — banked 3/4, centre body
+    { pos3D:[  60,  50,  0], w:70, h:44, lbl:'FLIGHT PROFILE' },
+  ],
+  [ // 4 Guidance — nose is at +X in ADX01 model
+    { pos3D:[+400,  40,  0], w:54, h:40, lbl:'EO/IR SEEKER' },
+  ],
+  [ // 5 Payload — warhead at the nose tip (+X extreme)
+    { pos3D:[ 510,   0,  0], w:58, h:40, lbl:'WARHEAD BAY'   },
+  ],
+  [ // 6 EW — top-down planform; annotate full span
+    { pos3D:[  50, 140,  0], w:86, h:54, lbl:'EW / PLANFORM' },
+  ],
+  null, // 7 mission
+];
+
+/* ── renderer ────────────────────────────────────────────────────────── */
+const canvas   = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.4)); // capped for performance
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping         = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace    = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const cam   = new THREE.PerspectiveCamera(34, innerWidth/innerHeight, 0.01, 20000);
+
+// Dark carbon-fiber lighting rig — total ≈5.5 units (was 19, which washed black to white)
+scene.add(new THREE.AmbientLight(0x08090c, 0.8));          // near-black ambient
+const key  = new THREE.DirectionalLight(0xF0EDE8, 3.2); key.position.set(-6,10,5);   scene.add(key);  // warm key
+const rim  = new THREE.DirectionalLight(0xCCCAC2, 1.2); rim.position.set(8,3,-10);   scene.add(rim);  // cool rim
+const fill = new THREE.DirectionalLight(0x666666, 0.3); fill.position.set(-2,12,-3); scene.add(fill); // fill
+
+const pivot = new THREE.Group();
+scene.add(pivot);
+
+/* ── simple state (no materialization) ──────────────────────────────── */
+let R=2, ready=false;
+let TGTS = TGTS_RAW.map(s => s ? s.map(t => ({...t, worldPos: new THREE.Vector3(...t.pos3D)})) : null);
+
+/* ── inject boarding-pass parity into scroll panels ─────────────────── */
+const CODES = ['AFR','PRO','PFM','GDN','PLD','EWS','MSN'];
+const REFS  = ['NS3-A001','NS3-A002','NS3-B001','NS3-B002','NS3-C001','NS3-C002','NS3-D001'];
+document.querySelectorAll('.station').forEach((s, idx) => {
+  const panel = s.querySelector('.panel');
+  if (!panel) return;
+  const stIdx = parseInt(s.dataset.stn || '0', 10) - 1;
+  const code  = CODES[stIdx] ?? '';
+  const ref   = REFS[stIdx]  ?? 'NS3-████';
+  // Add 3-letter code to right of tag header
+  const tag = panel.querySelector('.tag');
+  if (tag && code && !tag.querySelector('.tag-code')) {
+    const tc = document.createElement('span');
+    tc.className = 'tag-code'; tc.textContent = code;
+    tag.appendChild(tc);
+  }
+  // Add measurement-scale footer (replaces barcode)
+  if (!panel.querySelector('.panel-foot')) {
+    const foot = document.createElement('div');
+    foot.className = 'panel-foot';
+    foot.innerHTML = `<span class="pf-id">SYS 0${Math.max(1,stIdx+1)} / 07</span><span class="pf-ref">ADX-${ref}</span>`;
+    panel.appendChild(foot);
+  }
+});
+
+/* ── load OBJ — all-black model, no MTL needed ───────────────────────── */
+// Decal objects (flat planes on body surface) are removed to avoid z-fighting.
+const DECAL_OBJ = new Set([
+  'Logo-removebg-preview','Logo-removebg-preview.001',
+  'ADX-1_TEXT_1','ADX-1_TEXT_1.001',
+  'Untitled-1','Untitled-10','Untitled-11-01','Untitled-12',
+  'Untitled-13','Untitled-14','Untitled-15','Untitled-15.001',
+]);
+const BLACK_MAT = new THREE.MeshStandardMaterial({
+  color: new THREE.Color(0.008, 0.008, 0.009),
+  roughness: 0.82, metalness: 0.04,
+  side: THREE.DoubleSide,
+});
+
+objLoader.load(OBJ_URL,
+  model => {
+    // Remove decal planes
+    const toRemove = [];
+    model.traverse(n => { if (DECAL_OBJ.has(n.name)) toRemove.push(n); });
+    toRemove.forEach(n => n.removeFromParent());
+
+    // Apply uniform black to every mesh
+    model.traverse(n => {
+      if (!n.isMesh) return;
+      n.material = BLACK_MAT;
+    });
+
+    // OBJ from Blender: fuselage runs along Z — rotate so nose aligns with +X
+    // (all camera stations and TGTS_RAW assume nose at +X)
+    model.rotation.y = Math.PI / 2;
+    model.updateMatrixWorld(true); // flush rotation into world matrices before box
+
+    // Auto-centre on bounding box
+    const box = new THREE.Box3().setFromObject(model);
+    const ctr = box.getCenter(new THREE.Vector3());
+    model.position.sub(ctr);
+
+    // Compute R for camera rig scaling
+    const sph = new THREE.Sphere(); box.getBoundingSphere(sph);
+    R = sph.radius;
+    const FPS = R / 657;
+    ST.forEach(s => { s.focus[0]*=FPS; s.focus[1]*=FPS; s.focus[2]*=FPS; });
+    TGTS.forEach(set => { if (!set) return; set.forEach(t => t.worldPos.multiplyScalar(FPS)); });
+
+    let total = 0; model.traverse(n => { if(n.isMesh) total++; });
+    console.log(`OBJ ready: ${total} meshes, R=${R.toFixed(2)}`);
+    pivot.add(model);
+    ready = true;
+    document.getElementById('loader').classList.add('gone');
+    document.getElementById('game-ui').classList.add('gone');
+    layout();
+    jumpToCurrent();
+  },
+  xhr => {
+    const p = xhr.lengthComputable ? Math.floor(xhr.loaded/xhr.total*100) : 0;
+    const el = document.getElementById('gm-sys'); if (el) el.textContent = p + '%';
+    const br = document.getElementById('gm-bar');  if (br) br.style.width = p + '%';
+  },
+  err => {
+    console.error('OBJ load error:', err);
+    document.getElementById('loader').classList.add('gone');
+    document.getElementById('game-ui').classList.add('gone');
+    ready = true; layout(); jumpToCurrent();
+  }
+);
+
+/* ── camera lerp ─────────────────────────────────────────────────────── */
+const cur = {fx:0,fy:0,fz:0, rx:ST[0].rot[0],ry:ST[0].rot[1],rz:ST[0].rot[2], dist:ST[0].dist, pan:0};
+const tgt = {...cur};
+const mix    = (a,b,t) => a+(b-a)*t;
+const smooth = t => t*t*(3-2*t);
+
+function setTargetFromStation(s) {
+  const i=Math.max(0,Math.min(N-1,Math.floor(s))),j=Math.min(N-1,i+1),f=smooth(s-i);
+  const A=ST[i],B=ST[j];
+  tgt.fx=mix(A.focus[0],B.focus[0],f); tgt.fy=mix(A.focus[1],B.focus[1],f); tgt.fz=mix(A.focus[2],B.focus[2],f);
+  tgt.rx=mix(A.rot[0],B.rot[0],f); tgt.ry=mix(A.rot[1],B.rot[1],f); tgt.rz=mix(A.rot[2],B.rot[2],f);
+  tgt.dist=mix(A.dist,B.dist,f); tgt.pan=mix(A.pan,B.pan,f);
+}
+
+const _foc=new THREE.Vector3(), _cam=new THREE.Vector3(), _right=new THREE.Vector3();
+_right.copy(VIEW_DIR.clone().negate()).cross(new THREE.Vector3(0,1,0)).normalize();
+let idleT=0;
+
+function applyCamera(dt) {
+  const k=1-Math.pow(0.0016,dt);
+  for (const key in cur) cur[key]=mix(cur[key],tgt[key],k);
+  pivot.rotation.set(cur.rx,cur.ry,cur.rz);
+  _foc.set(cur.fx,cur.fy,cur.fz).applyEuler(pivot.rotation);
+  _cam.copy(_foc).addScaledVector(_right,cur.pan*R);
+  cam.position.copy(_cam).addScaledVector(VIEW_DIR,cur.dist*R);
+  cam.position.x+=Math.sin(idleT*0.18)*R*0.02;
+  cam.position.y+=Math.sin(idleT*0.25)*0.012*R;
+  cam.lookAt(_cam);
+  idleT+=dt;
+}
+
+/* ── 3D target projection ────────────────────────────────────────────── */
+const tgtLayer = document.getElementById('targets');
+let curTargetEls = []; // {el, worldPos: THREE.Vector3}
+
+function makeTgt(t, i) {
+  const el = document.createElement('div');
+  el.className = 'tgt';
+  el.style.cssText = `width:${t.w}px;height:${t.h}px;opacity:0;position:absolute`;
+  el.innerHTML = `
+    <div class="inv"></div>
+    <div class="cb tl"></div><div class="cb tr"></div>
+    <div class="cb bl"></div><div class="cb br"></div>
+    <div class="et tt"></div><div class="et bt"></div>
+    <div class="et lt"></div><div class="et rt"></div>
+    <div class="cx"></div><div class="cx2"></div>
+    <div class="cd"></div>
+    <div class="ti">${String(i+1).padStart(2,'0')}</div>
+    ${t.lbl ? `<div class="tl">${t.lbl}</div>` : ''}`;
+  return el;
+}
+
+function showTargets(stnIdx) {
+  // fade out old via CSS transition, then remove
+  curTargetEls.forEach(({el}) => {
+    el.style.transition = 'opacity 0.28s ease';
+    el.style.opacity = '0';
+    const dying = el;
+    setTimeout(() => { if (dying.parentNode) dying.remove(); }, 350);
+  });
+  curTargetEls = [];
+  const set = TGTS[stnIdx];
+  if (!set || !ready) return;
+  set.forEach((t, i) => {
+    const el = makeTgt(t, i);
+    el.style.opacity = '0';
+    el.style.transition = 'none';
+    tgtLayer.appendChild(el);
+    // Use rAF to ensure the element is in the DOM before transitioning
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.style.transition = `opacity 0.44s cubic-bezier(.16,1,.3,1) ${i * 70}ms`;
+      el.style.opacity = '1';
+    }));
+    curTargetEls.push({el, worldPos: t.worldPos});
+  });
+}
+
+const _proj = new THREE.Vector3();
+function projectTargets() {
+  curTargetEls.forEach(({el, worldPos}) => {
+    _proj.copy(worldPos).applyEuler(pivot.rotation);
+    _proj.project(cam);
+    // Hide if behind camera (z >= 1 in NDC) or way off screen
+    const x = (_proj.x *  .5 + .5) * innerWidth;
+    const y = (_proj.y * -.5 + .5) * innerHeight;
+    const offScreen = _proj.z >= 1.0 || x < -200 || x > innerWidth+200 || y < -200 || y > innerHeight+200;
+    if (offScreen) { el.style.visibility = 'hidden'; return; }
+    el.style.visibility = 'visible';
+    // Only position — never touch opacity/transition (owned by showTargets CSS)
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    el.style.transform = 'translate(-50%,-50%)';
+  });
+}
+
+/* ── scroll → station ────────────────────────────────────────────────── */
+const sections=[...document.querySelectorAll('.station')];
+let centers=[];
+function layout(){centers=sections.map(s=>s.offsetTop+s.offsetHeight/2)}
+function stationFloat(){
+  const sc=scrollY+innerHeight/2;
+  if(sc<=centers[0]) return 0;
+  if(sc>=centers[N-1]) return N-1;
+  for(let i=0;i<N-1;i++) if(sc>=centers[i]&&sc<centers[i+1]) return i+(sc-centers[i])/(centers[i+1]-centers[i]);
+  return 0;
+}
+
+/* ── HUD ─────────────────────────────────────────────────────────────── */
+const tFocus=document.getElementById('tFocus'), tStn=document.getElementById('tStn'),
+      tZoom=document.getElementById('tZoom'),   tSys=document.getElementById('tSys'),
+      progFill=document.getElementById('progFill'), hint=document.getElementById('hint');
+let scrolled=false, lastActive=-1;
+
+// starfield
+const sw=document.getElementById('stars');
+for(let i=0;i<55;i++){const s=document.createElement('i');s.style.cssText=`left:${(Math.random()*100).toFixed(1)}%;top:${(Math.random()*100).toFixed(1)}%;width:${Math.random()<.15?2:1}px;height:${Math.random()<.15?2:1}px`;s.style.setProperty('--tw',(3+Math.random()*6).toFixed(1)+'s');s.style.animationDelay=(-Math.random()*6).toFixed(1)+'s';sw.appendChild(s)}
+
+// index dots
+const iw=document.getElementById('idx');
+sections.forEach((s,i)=>{const b=document.createElement('button');b.onclick=()=>window.scrollTo({top:s.offsetTop+s.offsetHeight/2-innerHeight/2,behavior:'smooth'});iw.appendChild(b)});
+const dots=[...iw.children];
+
+function updateHUD(){
+  const s=stationFloat(), p=N>1?s/(N-1):0;
+  progFill.style.transform=`scaleX(${p})`;
+  const a=Math.round(s);
+  dots.forEach((d,i)=>d.classList.toggle('on',i===a));
+  const sec=sections[a];
+  tFocus.textContent=sec.dataset.focus||'—';
+  tStn.textContent=String(a).padStart(2,'0')+' / 0'+(N-1);
+  tSys.textContent=sec.dataset.sys||'NOMINAL';
+  if(a!==lastActive){lastActive=a;showTargets(a)}
+  if(!scrolled&&scrollY>8){scrolled=true;hint.classList.add('gone')}
+  // Hide 3D model at hero (station 0); reveal on first scroll into station 1+
+  const veil=document.getElementById('model-veil');
+  if(veil) veil.classList.toggle('gone', a>0);
+}
+
+/* ── reveal + count-up ───────────────────────────────────────────────── */
+const obs=new IntersectionObserver(ee=>{ee.forEach(e=>{
+  if(!e.isIntersecting)return;
+  e.target.classList.add('in');
+  e.target.querySelectorAll('[data-to],[data-text]').forEach(countUp);
+  e.target.querySelectorAll('.hl').forEach(h=>setTimeout(()=>h.classList.add('lit'),200));
+  obs.unobserve(e.target);
+})},{threshold:.25,rootMargin:'0px 0px -10% 0px'});
+document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+
+function countUp(el){
+  if(el.dataset.done)return; el.dataset.done='1';
+  const unit=el.querySelector('.u'), txt=el.dataset.text;
+  if(txt){el.textContent=txt;if(unit)el.appendChild(unit);return}
+  const to=parseFloat(el.dataset.to), dec=parseInt(el.dataset.dec||'0',10), suf=el.dataset.suffix||'';
+  const dur=1100,t0=performance.now();
+  function f(t){
+    const p=Math.min(1,(t-t0)/dur),v=(to*(1-Math.pow(1-p,3))).toFixed(dec);
+    el.textContent=v+(p===1?suf:'');if(unit)el.appendChild(unit);if(p<1)requestAnimationFrame(f);
+  }
+  requestAnimationFrame(f);
+}
+
+function jumpToCurrent(){setTargetFromStation(stationFloat());Object.assign(cur,tgt)}
+
+/* ── render loop ─────────────────────────────────────────────────────── */
+let last=performance.now(), lastHUD=0;
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  // Camera ALWAYS updates — even before model finishes loading
+  const sf = (window.__lock!=null) ? window.__lock : stationFloat();
+  setTargetFromStation(sf);
+  applyCamera(dt);
+  if(ready){
+    tZoom.textContent=(ST[0].dist/cur.dist).toFixed(2)+'×';
+    projectTargets();
+  }
+  renderer.render(scene,cam);
+  if(now-lastHUD>100){lastHUD=now;updateHUD()}
+}
+requestAnimationFrame(loop);
+
+addEventListener('scroll',updateHUD,{passive:true});
+updateHUD();
+
+addEventListener('resize',()=>{
+  cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);layout();
+});
+
+window.__seek    = p=>window.scrollTo(0,p*(document.body.scrollHeight-innerHeight));
+window.__station = i=>{setTargetFromStation(i);Object.assign(cur,tgt)};
+window.__revealAll = ()=>document.querySelectorAll('.reveal').forEach(e=>{
+  e.classList.add('in');e.querySelectorAll('[data-to],[data-text]').forEach(countUp);
+  e.querySelectorAll('.hl').forEach(h=>h.classList.add('lit'));
+});
+
+/* ── Particle materialization ─────────────────────────────────────── */
+// Triggered when ann-zone first enters viewport (scroll past hero).
+// Particles scatter from pure noise, converge to model vertex cloud.
+// Model was already visible — particles just overlay as a dramatic effect.
+(function(){
+  const mc  = document.getElementById('mat-canvas');
+  if (!mc) return;
+  const ctx = mc.getContext('2d');
+  let pts   = null;  // [{x,y,tx,ty,vx,vy}]
+  let phase = 'wait'; // wait | scatter | converge | done
+  let frameN = 0;
+  let doneTimer;
+
+  function resize(){mc.width=innerWidth;mc.height=innerHeight;}
+  resize(); addEventListener('resize', resize);
+
+  function initPts(){
+    // Seed ~600 particles from random noise (white/dim)
+    pts = Array.from({length:600}, ()=>({
+      x: Math.random()*innerWidth,
+      y: Math.random()*innerHeight,
+      tx: Math.random()*innerWidth,
+      ty: Math.random()*innerHeight,
+      vx: (Math.random()-.5)*2,
+      vy: (Math.random()-.5)*2,
+      a:  Math.random()*.7+.1,
+      r:  Math.random()*1.2+.3,
+    }));
+  }
+
+  function drawFrame(){
+    if(phase==='done') return;
+    requestAnimationFrame(drawFrame);
+    const W=mc.width, H=mc.height;
+    ctx.clearRect(0,0,W,H);
+    frameN++;
+
+    if(phase==='scatter'){
+      // Drift randomly
+      pts.forEach(p=>{
+        p.x+=p.vx; p.y+=p.vy;
+        if(p.x<0||p.x>W) p.vx*=-1;
+        if(p.y<0||p.y>H) p.vy*=-1;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle=`rgba(240,237,232,${p.a*.5})`;
+        ctx.fill();
+      });
+      // After 60 frames (~1s), converge
+      if(frameN>60){ phase='converge'; frameN=0; }
+    }
+    else if(phase==='converge'){
+      const t = Math.min(1, frameN/90); // 90 frames to converge
+      const e = t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; // ease in-out
+      let done=true;
+      pts.forEach(p=>{
+        p.x += (p.tx-p.x)*e*.06;
+        p.y += (p.ty-p.y)*e*.06;
+        const dist=Math.hypot(p.tx-p.x,p.ty-p.y);
+        if(dist>2) done=false;
+        const alpha = p.a*(1-e*.6); // fade as converged
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.r*(1-e*.4),0,Math.PI*2);
+        ctx.fillStyle=`rgba(240,237,232,${alpha})`;
+        ctx.fill();
+      });
+      if(frameN>90||done){
+        phase='done';
+        mc.style.opacity='0';
+        mc.style.transition='opacity 1s ease';
+      }
+    }
+  }
+
+  // Observe the ann-zone — fire when user scrolls into it
+  const annZone = document.getElementById('ann-zone');
+  if(!annZone) return;
+  const obs = new IntersectionObserver(([e])=>{
+    if(!e.isIntersecting||phase!=='wait') return;
+    obs.disconnect();
+    mc.classList.add('active');
+    initPts(); phase='scatter'; frameN=0;
+    drawFrame();
+  }, {threshold:0.05});
+  obs.observe(annZone);
+})();
+
+/* ── Terminal dive video autoplay (inline, no JS trigger needed) ─────── */
+// Video is in a fixed Stage Manager monitor — autoplay handles it natively
+</script>
+
+</body>
+</html>
