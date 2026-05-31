@@ -4,7 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nightshade Mk III — Systems Teardown</title>
-  <!-- build: 2026-05-31-v2 -->
+  <!-- build: 2026-05-31-v3 -->
+  <!-- GSAP + ScrollTrigger (synchronous so load event callbacks work) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
   <link rel="icon" type="image/svg+xml" href="/logo/apollyon-logo-black.svg" />
   <link rel="stylesheet" href="/fonts/jetbrains-mono-local.css" />
   <!-- Davetica-Regular.otf is a watermarked demo — using Helvetica Neue Bold instead -->
@@ -1732,28 +1735,128 @@ function updateHUD(){
   if(veil) veil.classList.toggle('gone', a>0);
 }
 
-/* ── reveal + count-up ───────────────────────────────────────────────── */
-const obs=new IntersectionObserver(ee=>{ee.forEach(e=>{
-  if(!e.isIntersecting)return;
-  e.target.classList.add('in');
-  e.target.querySelectorAll('[data-to],[data-text]').forEach(countUp);
-  e.target.querySelectorAll('.hl').forEach(h=>setTimeout(()=>h.classList.add('lit'),200));
-  obs.unobserve(e.target);
-})},{threshold:.25,rootMargin:'0px 0px -10% 0px'});
-document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
-
-function countUp(el){
+/* ── reveal + count-up (GSAP ScrollTrigger) ─────────────────────────── */
+// Expose countUp globally so GSAP callbacks can reach it
+window._countUp = function countUp(el){
   if(el.dataset.done)return; el.dataset.done='1';
   const unit=el.querySelector('.u'), txt=el.dataset.text;
   if(txt){el.textContent=txt;if(unit)el.appendChild(unit);return}
   const to=parseFloat(el.dataset.to), dec=parseInt(el.dataset.dec||'0',10), suf=el.dataset.suffix||'';
-  const dur=1100,t0=performance.now();
-  function f(t){
-    const p=Math.min(1,(t-t0)/dur),v=(to*(1-Math.pow(1-p,3))).toFixed(dec);
-    el.textContent=v+(p===1?suf:'');if(unit)el.appendChild(unit);if(p<1)requestAnimationFrame(f);
-  }
-  requestAnimationFrame(f);
-}
+  // Use GSAP ticker for smooth count
+  const obj={v:0};
+  gsap.to(obj,{v:to, duration:1.2, ease:'power2.out',
+    onUpdate(){ el.textContent=obj.v.toFixed(dec)+(suf); if(unit)el.appendChild(unit); },
+    onComplete(){ el.textContent=to.toFixed(dec)+suf; if(unit)el.appendChild(unit); }
+  });
+};
+
+// GSAP-powered reveal: replaces IntersectionObserver
+window.addEventListener('load', ()=>{
+  if(typeof gsap==='undefined') return; // fallback: keep CSS
+  gsap.registerPlugin(ScrollTrigger);
+
+  /* ── Station panels: slide from their card's side ─────────────────── */
+  document.querySelectorAll('.station').forEach(stn => {
+    const panel = stn.querySelector('.panel');
+    if(!panel) return;
+    const xFrom = stn.classList.contains('left') ? -60
+                : stn.classList.contains('right')? 60 : 0;
+    // Remove .reveal from panel so GSAP owns its opacity/transform
+    panel.classList.remove('reveal');
+    gsap.fromTo(panel,
+      { x: xFrom, autoAlpha: 0, filter:'blur(6px)' },
+      { x:0, autoAlpha:1, filter:'blur(0px)',
+        duration:1.1, ease:'expo.out', clearProps:'filter',
+        scrollTrigger:{ trigger:stn, start:'top 76%', once:true },
+        onStart(){
+          panel.classList.add('in');
+          panel.querySelectorAll('[data-to],[data-text]').forEach(window._countUp);
+          panel.querySelectorAll('.hl').forEach(h=>setTimeout(()=>h.classList.add('lit'),350));
+        }
+      }
+    );
+    // Stagger inner blocks
+    const kids = panel.querySelectorAll(
+      '.tag,.h-stn,.bigstat,.stats,.kv,.fan,.chiprow,.phases,.hl,.panel-foot,.pnote,.tac-vis'
+    );
+    if(kids.length){
+      gsap.from(kids,{
+        y:16, autoAlpha:0, stagger:0.055, duration:0.65, ease:'power2.out',
+        delay:0.18, clearProps:'all',
+        scrollTrigger:{ trigger:stn, start:'top 76%', once:true }
+      });
+    }
+  });
+
+  /* ── Generic .reveal elements (non-panel) ─────────────────────────── */
+  document.querySelectorAll('.reveal').forEach(el => {
+    gsap.from(el,{
+      y:22, autoAlpha:0, filter:'blur(5px)', duration:1.0, ease:'power3.out', clearProps:'filter',
+      scrollTrigger:{ trigger:el, start:'top 84%', once:true,
+        onEnter(){
+          el.classList.add('in');
+          el.querySelectorAll('[data-to],[data-text]').forEach(window._countUp);
+          el.querySelectorAll('.hl').forEach(h=>setTimeout(()=>h.classList.add('lit'),200));
+        }
+      }
+    });
+  });
+
+  /* ── Departure board rows ─────────────────────────────────────────── */
+  gsap.from('.dep-row',{
+    x:-24, autoAlpha:0, stagger:0.065, duration:0.55, ease:'power2.out',
+    scrollTrigger:{ trigger:'.dep-board', start:'top 80%', once:true }
+  });
+
+  /* ── Boarding passes ──────────────────────────────────────────────── */
+  gsap.from('.pass',{
+    y:44, autoAlpha:0, stagger:0.12, duration:0.85, ease:'back.out(1.5)',
+    scrollTrigger:{ trigger:'.pass-grid', start:'top 80%', once:true }
+  });
+  gsap.from('.pass-bc',{
+    scaleX:0, duration:0.7, ease:'power3.inOut', stagger:0.12, transformOrigin:'left',
+    scrollTrigger:{ trigger:'.pass-grid', start:'top 74%', once:true }
+  });
+
+  /* ── Gate signs ───────────────────────────────────────────────────── */
+  gsap.from('.gate-card',{
+    y:36, autoAlpha:0, stagger:0.1, duration:0.7, ease:'power3.out',
+    scrollTrigger:{ trigger:'.gate-sec', start:'top 80%', once:true }
+  });
+
+  /* ── Battlespace heading ──────────────────────────────────────────── */
+  gsap.from('.bs-line',{
+    y:72, autoAlpha:0, stagger:0.14, duration:1.0, ease:'power4.out',
+    scrollTrigger:{ trigger:'.bs-heading', start:'top 80%', once:true }
+  });
+  gsap.from('.bs-roles',{
+    y:20, autoAlpha:0, duration:0.8, ease:'power2.out', delay:0.3,
+    scrollTrigger:{ trigger:'.bs-roles', start:'top 82%', once:true }
+  });
+
+  /* ── Photo grid ───────────────────────────────────────────────────── */
+  gsap.from('.photo-item',{
+    scale:0.94, autoAlpha:0, stagger:0.08, duration:0.8, ease:'power2.out',
+    scrollTrigger:{ trigger:'.photo-grid', start:'top 84%', once:true }
+  });
+
+  /* ── Tactical profile cards ───────────────────────────────────────── */
+  gsap.from('.tac-grid .panel',{
+    y:44, autoAlpha:0, stagger:0.1, duration:0.85, ease:'power3.out',
+    scrollTrigger:{ trigger:'.tac-grid', start:'top 80%', once:true }
+  });
+
+  /* ── Stage Manager monitor (terminal dive) ────────────────────────── */
+  gsap.from('.dive-monitor',{
+    x:-70, autoAlpha:0, duration:1.2, ease:'expo.out',
+    scrollTrigger:{ trigger:'#station-dive', start:'top 76%', once:true }
+  });
+
+  /* ── Hero entrance ────────────────────────────────────────────────── */
+  gsap.from('.h-hero',   { y:50, autoAlpha:0, duration:1.3, ease:'power4.out', delay:0.4 });
+  gsap.from('.h-sub',    { y:24, autoAlpha:0, duration:0.9, ease:'power3.out', delay:0.85 });
+  gsap.from('.gm-title', { y:40, autoAlpha:0, duration:1.2, ease:'power4.out', delay:0.2 });
+});
 
 function jumpToCurrent(){setTargetFromStation(stationFloat());Object.assign(cur,tgt)}
 
