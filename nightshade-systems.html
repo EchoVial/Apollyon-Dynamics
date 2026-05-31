@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nightshade Mk III — Systems Teardown</title>
+  <!-- build: 2026-05-31-v2 -->
   <link rel="icon" type="image/svg+xml" href="/logo/apollyon-logo-black.svg" />
   <link rel="stylesheet" href="/fonts/jetbrains-mono-local.css" />
   <!-- Davetica-Regular.otf is a watermarked demo — using Helvetica Neue Bold instead -->
@@ -1441,9 +1442,9 @@ const objLoader  = new OBJLoader();
 const ST = [
   { focus:[0,0,0],      rot:[-0.10,-0.55,0.00], dist:3.20, pan: 0.00 },  // 0 hero
   { focus:[0,0,0],      rot:[ 0.00, 0.05,0.00], dist:3.00, pan: 0.34 },  // 1 composite airframe
-  { focus:[-470,30,0],  rot:[-0.05, 0.72,0.00], dist:1.55, pan:-0.18 },  // 2 propulsion — jet shifted left
-  { focus:[0,0,0],      rot:[-0.16,-0.50,0.06], dist:4.00, pan: 0.52 },  // 3 dive — smaller, shifted right
-  { focus:[+470,5,0],   rot:[-0.08,-0.42,0.00], dist:2.00, pan: 0.58 },  // 4 guidance — bigger, much further right
+  { focus:[-470,30,0],  rot:[-0.05, 0.72,0.00], dist:1.55, pan: 0.08 },  // 2 propulsion — jet shifted left
+  { focus:[0,0,0],      rot:[-0.16,-0.50,0.06], dist:4.60, pan: 0.64 },  // 3 dive — smaller, shifted right
+  { focus:[+470,5,0],   rot:[-0.08,-0.42,0.00], dist:1.65, pan: 0.72 },  // 4 guidance — bigger, much further right
   { focus:[-20,-55,0],  rot:[ 0.30, 0.36,0.00], dist:2.20, pan:-0.34 },  // 5 payload
   { focus:[0,0,0],      rot:[ 1.42, 0.00,0.00], dist:3.00, pan: 0.30 },  // 6 EW planform
   { focus:[0,0,0],      rot:[-0.18, 0.00,0.00], dist:5.00, pan: 0.00 },  // 7 battlespace
@@ -1468,8 +1469,8 @@ const TGTS_RAW = [
   [ // 4 Guidance — nose is at +X in ADX01 model
     { pos3D:[+400,  40,  0], w:54, h:40, lbl:'EO/IR SEEKER' },
   ],
-  [ // 5 Payload — warhead at the nose tip (+X extreme)
-    { pos3D:[ 510,   0,  0], w:58, h:40, lbl:'WARHEAD BAY'   },
+  [ // 5 Payload — nose tip (+X max) elevated slightly for top-down camera visibility
+    { pos3D:[ 500,  90,  0], w:54, h:38, lbl:'WARHEAD BAY'   },
   ],
   [ // 6 EW — top-down planform; annotate full span
     { pos3D:[  50, 140,  0], w:86, h:54, lbl:'EW / PLANFORM' },
